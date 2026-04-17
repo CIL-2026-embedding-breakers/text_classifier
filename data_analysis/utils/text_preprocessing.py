@@ -260,7 +260,7 @@ class TextPreprocessor:
                 )
                 if min_dist > self.person_org_proximity:
                     continue
-                
+
                 self._fill_text_array(chars, ent.start_char, ent.end_char)
 
                 removed.append({
@@ -275,8 +275,7 @@ class TextPreprocessor:
                 span_removed: list[str] = []
                 for token in ent:
                     if token.pos_ in _DESCRIPTOR_POS:
-                        for i in range(token.idx, token.idx + len(token.text)):
-                            chars[i] = " "
+                        self._fill_text_array(chars, token.idx, token.idx + len(token.text))
                         span_removed.append(token.text)
                 if span_removed:
                     removed.append({
