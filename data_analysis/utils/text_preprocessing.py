@@ -25,7 +25,14 @@ _EMOJI_RE = re.compile(
 _URL_RE = re.compile(r'https?://\S+|www\.\S+', flags=re.IGNORECASE)
 _HTML_RE = re.compile(r'<[^>]+>')
 _PUNCT_RUN_RE = re.compile(r'([!?.,;:\-])\1+')
-_WORD_RE = re.compile(r'\b\w+\b')
+_WORD_RE = re.compile(r"[A-Za-zÀ-ÿ0-9]+(?:'[A-Za-zÀ-ÿ0-9]+)?") # With the old pattern, a review like:
+#   "I didn't like it"
+# was tokenized as:
+#   ["i", "didn", "t", "like", "it"]
+# which breaks negation detection because "didn't" is no longer matched.
+# With the new pattern, the same text becomes:
+#   ["i", "didn't", "like", "it"]
+# so lexical rules for negation/contrast remain valid
 
 _DE_VARIANTS: frozenset[str] = frozenset({"NDS", "ALS", "BAR", "LB", "GSW"})
 _NER_FILTER_TYPES: frozenset[str] = frozenset({"PRODUCT", "ORG", "PERSON"})
@@ -191,6 +198,23 @@ class TextPreprocessor:
             if lbl.replace("__label__", "").upper() in en_de_langs
         )
         return score >= self.entity_score_threshold
+    
+    
+    
+
+    def normalize_apostrophes(self, text: str) -> str:
+        return (
+            str(text)
+            .replace("’", "'")
+            .replace("‘", "'")
+            .replace("`", "'")
+            .replace("´", "'")
+        )
+
+
+    def normalize_for_lexical_matching(self, text: str) -> str:
+        text = self.normalize_apostrophes(text)
+        return text.lower()
 
     # ------------------------------------------------------------------
     # Core NER + obfuscated-URL step
@@ -306,42 +330,36 @@ class TextPreprocessor:
         return preprocessed
 
     def preprocess_with_ner_diff(
-        self, text: str, model=None, nlp=None
-    ) -> tuple[str, list[dict]]:
-        """Clean *text* and also return details of every NER removal.
+            self, text: str, model=None, nlp=None
+        ) -> tuple[str, list[dict]]:
+            """Clean *text* and also return details of every NER removal."""
+            ner_removed: list[dict] = []
 
-        Returns
-        -------
-        preprocessed_text
-            The cleaned, single-line string ready for fasttext.
-        ner_removed
-            List of removal entries (see :meth:`_apply_ner` for structure).
-            Empty list when NER was not applied or nothing was removed.
-        """
-        ner_removed: list[dict] = []
+            # fasttext rejects strings containing \n
+            text = text.replace("\n", " ").replace("\r", " ")
+            text = self.normalize_apostrophes(text)
 
-        # fasttext rejects strings containing \\n
-        text = text.replace("\n", " ").replace("\r", " ")
-        if self.strip_html:
-            text = self.strip_html_tags(text)
-        if self.remove_urls:
-            text = self.strip_urls(text)
-        if self.strip_emojis:
-            text = self.remove_emojis(text)
-        if self.collapse_punctuation:
-            text = self.normalize_punctuation(text)
-        if self.filter_entities:
-            if self.use_spacy_ner and nlp is not None:
-                text, ner_removed = self._apply_ner(text, nlp)
-            elif model is not None:
-                tokens = _WORD_RE.findall(text)
-                text = " ".join(
-                    t for t in tokens if self.is_linguistic_token(t, model)
-                )
-        words = self.extract_words(text)
-        preprocessed = (
-            " ".join(words)
-            if words
-            else (text.lower().strip() if self.lowercase else text.strip())
-        )
-        return preprocessed, ner_removed
+            if self.strip_html:
+                text = self.strip_html_tags(text)
+            if self.remove_urls:
+                text = self.strip_urls(text)
+            if self.strip_emojis:
+                text = self.remove_emojis(text)
+            if self.collapse_punctuation:
+                text = self.normalize_punctuation(text)
+            if self.filter_entities:
+                if self.use_spacy_ner and nlp is not None:
+                    text, ner_removed = self._apply_ner(text, nlp)
+                elif model is not None:
+                    tokens = _WORD_RE.findall(text)
+                    text = " ".join(
+                        t for t in tokens if self.is_linguistic_token(t, model)
+                    )
+
+            words = self.extract_words(text)
+            preprocessed = (
+                " ".join(words)
+                if words
+                else (text.lower().strip() if self.lowercase else text.strip())
+            )
+            return preprocessed, ner_removed
