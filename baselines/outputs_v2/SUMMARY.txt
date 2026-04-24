@@ -1,0 +1,51 @@
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║           SENTIMENT ANALYSIS BASELINE SUMMARY & INSIGHTS                   ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+1. EVALUATION METRIC
+   └─ Score = 1 - MAE/4 (higher is better)
+   └─ Range: 0.0 to 1.0 (0 = all predictions off by 4, 1 = perfect)
+
+2. BASELINE MODEL PERFORMANCE
+   Best Model: baseline_lr_tfidf
+   └─ Validation MAE: 0.5601
+   └─ Competition Score: 0.8600
+   └─ Perfect Predictions: 14350 (56.9%)
+   └─ Large Errors (≥2): 2399 (9.5%)
+
+3. ERROR ANALYSIS
+   Mean Error:    0.5601
+   Median Error:  0.0000
+   Std Error:     0.7681
+   Max Error:     4
+
+4. BEST STRATEGIES
+   Feature Extraction: features_count_unigram (MAE: 0.5980)
+   Preprocessing:     none (MAE: 0.5601)
+   Language Approach: lang_en
+
+5. KEY FINDINGS
+   • Simple logistic regression is fast and interpretable baseline
+   • Feature engineering (TF-IDF vs Count, n-grams) has notable impact
+   • Preprocessing has moderate impact on performance
+   • Language-specific models may offer advantages if data is imbalanced
+
+6. INSIGHTS FOR FUTURE IMPROVEMENTS (BERT + Data Augmentation)
+   • Large errors (2399 cases) suggest context/nuance is important
+   • Performance varies by label → label-specific augmentation could help
+   • Language differences → multilingual BERT could be valuable
+   • Error patterns suggest room for sequence-based models
+
+7. RECOMMENDATIONS
+   ✓ Use 'baseline_lr_tfidf' as production baseline
+   ✓ Consider TF-IDF with bigrams for feature extraction
+   ✓ Investigate high-error samples for augmentation targets
+   ✓ Next step: Try BERT-based models with targeted augmentation
+
+8. FILES SAVED TO: outputs_v2
+   • all_baseline_results.csv - Complete results table
+   • best_model_analysis.png - Best model visualizations
+   • feature_extraction_comparison.png
+   • preprocessing_comparison.png
+   • language_comparison.png
