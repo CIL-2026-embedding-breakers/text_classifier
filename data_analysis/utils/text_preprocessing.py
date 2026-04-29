@@ -25,7 +25,8 @@ _EMOJI_RE = re.compile(
 _URL_RE = re.compile(r'https?://\S+|www\.\S+', flags=re.IGNORECASE)
 _HTML_RE = re.compile(r'<[^>]+>')
 _PUNCT_RUN_RE = re.compile(r'([!?.,;:\-])\1+')
-_WORD_RE = re.compile(r'\b\w+\b')
+_APOSTROPHES_RE = re.compile(r"[‘’ʼʹʻ`´]")
+_WORD_RE = re.compile(r"\b\w+(?:'\w+)*\b")
 
 _DE_VARIANTS: frozenset[str] = frozenset({"NDS", "ALS", "BAR", "LB", "GSW"})
 _NER_FILTER_TYPES: frozenset[str] = frozenset({"PRODUCT", "ORG", "PERSON"})
@@ -176,6 +177,7 @@ class TextPreprocessor:
         return _PUNCT_RUN_RE.sub(r"\1", text)
 
     def extract_words(self, text: str) -> list[str]:
+        text = _APOSTROPHES_RE.sub("'", text)
         source = text.lower() if self.lowercase else text
         return _WORD_RE.findall(source)
 
@@ -196,13 +198,13 @@ class TextPreprocessor:
     # Core NER + obfuscated-URL step
     # ------------------------------------------------------------------
 
-    def _fill_text_array(self, text : list[str], idx_start, idx_end, fill_char =" ", fill_str= None):
-        """Helper to replace a span of characters in *text* with spaces or a
-        custom string."""
+    def _fill_text_array(self, text: list[str], idx_start: int, idx_end: int,
+                         fill_char: str = " ", fill_str: str | None = None) -> None:
+        """In-place: replace ``text[idx_start:idx_end]`` with spaces or a custom string."""
         if fill_str is not None:
-            return text[:idx_start] + list(fill_str) + text[idx_end:]
+            text[idx_start:idx_end] = list(fill_str)
         else:
-            return text[:idx_start] + [fill_char] * (idx_end - idx_start) + text[idx_end:]
+            text[idx_start:idx_end] = [fill_char] * (idx_end - idx_start)
 
     def _apply_ner(self, text: str, nlp) -> tuple[str, list[dict]]:
         """Run NER-based descriptor removal and obfuscated-URL stripping.

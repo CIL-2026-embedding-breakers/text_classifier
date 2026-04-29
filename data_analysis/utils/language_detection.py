@@ -4,6 +4,7 @@ import types
 import urllib.request
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import ray
 
@@ -16,6 +17,44 @@ _FASTTEXT_MODEL_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models
 _DE_VARIANTS = {"NDS", "ALS", "BAR", "LB", "GSW"}
 
 _DEFAULT_PREPROCESSOR = TextPreprocessor()
+
+
+def tag_ambiguity(df: pd.DataFrame, close_call_delta: float = 0.15) -> pd.Series:
+    """Reclassify DE dialects, force non-EN/DE picks to the better of EN/DE
+    when there is *any* EN/DE signal, and tag ``_ambiguous_reason`` on the
+    DataFrame.
+
+    Mutates ``df`` in place. Expects columns: ``_lang``, ``_lang_prob``,
+    ``_en_prob``, ``_de_prob``. Returns the boolean mask of rows that have
+    *no* EN/DE signal and should be routed to OTHER.
+    """
+    df.loc[df["_lang"].isin(_DE_VARIANTS), "_lang"] = "DE"
+
+    df["_ambiguous_reason"] = ""
+
+    forced_mask = ~df["_lang"].isin(("EN", "DE"))
+    has_en_de_signal = df["_en_prob"].gt(0) | df["_de_prob"].gt(0)
+
+    other_mask = forced_mask & ~has_en_de_signal
+    override_mask = forced_mask & has_en_de_signal
+
+    df.loc[override_mask, "_ambiguous_reason"] = "forced_en_de"
+    df.loc[override_mask, "_lang"] = np.where(
+        df.loc[override_mask, "_en_prob"] >= df.loc[override_mask, "_de_prob"],
+        "EN",
+        "DE",
+    )
+    df.loc[override_mask, "_lang_prob"] = df.loc[override_mask, ["_en_prob", "_de_prob"]].max(axis=1)
+
+    close_mask = (
+        df["_ambiguous_reason"].eq("")
+        & df["_lang"].isin(("EN", "DE"))
+        & (df["_en_prob"] - df["_de_prob"]).abs().lt(close_call_delta)
+        & df[["_en_prob", "_de_prob"]].min(axis=1).gt(0.05)
+    )
+    df.loc[close_mask, "_ambiguous_reason"] = "en_de_close"
+
+    return other_mask
 
 
 def _get_model_path() -> Path:
@@ -189,35 +228,7 @@ def split_languages_in_csv(
         for r in flat_results
     ]
 
-    # --- Reclassify German dialect codes ---
-    df.loc[df["_lang"].isin(_DE_VARIANTS), "_lang"] = "DE"
-
-    # --- Ambiguity tagging ---
-    df["_ambiguous_reason"] = ""
-
-    # Case 1 — forced_en_de: model predicted something other than EN/DE;
-    # override to whichever of EN/DE has the higher score. Rows where both
-    # EN and DE have 0 probability go to OTHER instead (truly foreign text).
-    forced_mask = ~df["_lang"].isin(("EN", "DE"))
-    has_en_de_signal = df["_en_prob"].gt(0) | df["_de_prob"].gt(0)
-
-    other_mask = forced_mask & ~has_en_de_signal
-    override_mask = forced_mask & has_en_de_signal
-
-    df.loc[override_mask, "_ambiguous_reason"] = "forced_en_de"
-    df.loc[override_mask, "_lang"] = df.loc[override_mask].apply(
-        lambda r: "EN" if r["_en_prob"] >= r["_de_prob"] else "DE", axis=1
-    )
-    df.loc[override_mask, "_lang_prob"] = df.loc[override_mask, ["_en_prob", "_de_prob"]].max(axis=1)
-
-    # Case 2 — en_de_close: model picked EN or DE but the margin is small
-    close_mask = (
-        df["_ambiguous_reason"].eq("") &
-        df["_lang"].isin(("EN", "DE")) &
-        (df["_en_prob"] - df["_de_prob"]).abs().lt(close_call_delta) &
-        df[["_en_prob", "_de_prob"]].min(axis=1).gt(0.05)
-    )
-    df.loc[close_mask, "_ambiguous_reason"] = "en_de_close"
+    other_mask = tag_ambiguity(df, close_call_delta=close_call_delta)
 
     # --- Write outputs ---
     orig_filename = Path(input_filepath).name
