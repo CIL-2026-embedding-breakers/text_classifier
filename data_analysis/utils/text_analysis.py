@@ -306,6 +306,7 @@ def evaluate_ablations(
 
     Returns a tidy DataFrame ``[variant, <metrics from evaluator_fn>]``.
     """
+    import time
     from data_analysis.utils.text_preprocessing import TextPreprocessor
 
     labels = sample_df[label_column].tolist()
@@ -314,24 +315,64 @@ def evaluate_ablations(
         name = cfg["name"]
         kwargs = {k: v for k, v in cfg.items() if k != "name"}
         pre = TextPreprocessor(**kwargs)
+        t0 = time.time()
+        print(f"  [{name}] preprocessing {len(sample_df):,} rows ...", end="", flush=True)
         cleaned: list[str] = []
         for _, row in sample_df.iterrows():
             lang_code = (row[text_lang_column] if text_lang_column else "en").lower()
             nlp = nlp_by_lang.get(lang_code.upper()) if nlp_by_lang else None
             cleaned.append(pre.preprocess(row[text_column], nlp=nlp, lang=lang_code))
+        t_pre = time.time() - t0
+        print(f" {t_pre:.1f}s   evaluating ...", end="", flush=True)
+        t0 = time.time()
         metrics = evaluator_fn(cleaned, labels)
+        t_eval = time.time() - t0
+        print(f" {t_eval:.1f}s   mae={metrics.get('mae', float('nan')):.4f}  "
+              f"score={metrics.get('score', float('nan')):.4f}")
         rows.append({"variant": name, **metrics})
     return pd.DataFrame(rows)
 
 
-def sentiment_evaluator(cleaned_texts: list[str], labels: list[int]) -> dict[str, float]:
-    """Train a sentiment classifier on (cleaned_texts, labels) and return
-    held-out metrics. To be plugged in with the BOW training code from the
-    parallel branch. Should return at least ``{"macro_f1": float}``.
+_DEFAULT_BOW_CONFIG: dict = {
+    "type": "bow_lr",
+    "name": "bow_lr_tfidf_bigram",
+    "ngram_range": [1, 2],
+    "max_features": 10000,
+    "C": 1.0,
+    "vectorizer_type": "tfidf",
+    "solver": "lbfgs",
+    "penalty": "l2",
+}
+
+
+def sentiment_evaluator(
+    cleaned_texts: list[str],
+    labels: list[int],
+    model_config: dict | None = None,
+    test_size: float = 0.2,
+    random_state: int = 42,
+) -> dict[str, float]:
+    """Stratified 80/20 split → fit a BOW model from ``baselines/`` → return
+    held-out metrics (MAE, score = 1 - MAE/4, accuracy, macro-F1).
+
+    Default model is ``BOWLogisticRegression`` with TF-IDF + bigrams + L2,
+    matching the strongest baseline found in ``baselines/outputs_v2``.
     """
-    raise NotImplementedError(
-        "Plug in BOW training from the parallel branch."
+    from sklearn.model_selection import train_test_split
+    from baselines.src.models import create_model_from_config
+    from baselines.src.utils import MetricsComputer
+
+    cfg = model_config or _DEFAULT_BOW_CONFIG
+    X = np.asarray(cleaned_texts)
+    y = np.asarray(labels)
+    X_tr, X_dv, y_tr, y_dv = train_test_split(
+        X, y, test_size=test_size, stratify=y, random_state=random_state
     )
+
+    model = create_model_from_config(cfg)
+    model.fit(X_tr, y_tr)
+    preds = model.predict(X_dv)
+    return MetricsComputer.compute_all_metrics(y_dv, preds)
 
 
 # ---------------------------------------------------------------------------
