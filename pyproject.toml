@@ -26,6 +26,7 @@ dependencies = [
     "ipykernel>=7.2.0",
     "emoji>=2.15.0",
     "emosent-py>=0.1.7",
+    "seaborn>=0.13.2",
 ]
 
 [dependency-groups]

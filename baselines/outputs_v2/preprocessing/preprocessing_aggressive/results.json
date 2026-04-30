@@ -1,0 +1,46 @@
+[
+  {
+    "config": {
+      "name": "prep_aggressive",
+      "type": "bow_lr",
+      "preprocessing": "aggressive",
+      "ngram_range": [
+        1,
+        2
+      ],
+      "max_features": 10000,
+      "vectorizer_type": "tfidf"
+    },
+    "test_metrics": {
+      "mae": 0.5592460317460317,
+      "mse": 0.901547619047619,
+      "rmse": 0.9494986145580303,
+      "r2": 0.5492261904761905,
+      "score": 0.8601884920634921,
+      "accuracy": 0.5699603174603175,
+      "precision_macro": 0.5639787804283877,
+      "recall_macro": 0.5699603174603175,
+      "f1_macro": 0.565976295337675,
+      "precision_weighted": 0.5639787804283876,
+      "recall_weighted": 0.5699603174603175,
+      "f1_weighted": 0.565976295337675,
+      "competition_score": 0.8601884920634921
+    },
+    "train_metrics": {
+      "mae": 0.5002865961199294,
+      "mse": 0.8076763668430335,
+      "rmse": 0.8987081655593396,
+      "r2": 0.5961618165784832,
+      "score": 0.8749283509700176,
+      "accuracy": 0.6176190476190476,
+      "precision_macro": 0.6123910278937597,
+      "recall_macro": 0.6176190476190476,
+      "f1_macro": 0.6137371033837471,
+      "precision_weighted": 0.6123910278937595,
+      "recall_weighted": 0.6176190476190476,
+      "f1_weighted": 0.6137371033837471,
+      "competition_score": 0.8749283509700176
+    },
+    "metadata": {}
+  }
+]
