@@ -352,7 +352,6 @@ class BOWLinearSVC(BaselineModel):
             C=self.C,
             max_iter=2000,
             random_state=42,
-            n_jobs=-1
         )
         self.model.fit(X_vectors, y)
         self.is_fitted = True
