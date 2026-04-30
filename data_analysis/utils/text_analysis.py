@@ -310,6 +310,15 @@ def evaluate_ablations(
     from data_analysis.utils.text_preprocessing import TextPreprocessor
 
     labels = sample_df[label_column].tolist()
+    # Group row indices by language so each spaCy pipeline gets a single batch call.
+    if text_lang_column:
+        groups: dict[str, list[int]] = {}
+        for i, lang in enumerate(sample_df[text_lang_column].astype(str).str.upper()):
+            groups.setdefault(lang, []).append(i)
+    else:
+        groups = {"EN": list(range(len(sample_df)))}
+
+    texts_by_idx = sample_df[text_column].fillna("").tolist()
     rows = []
     for cfg in variants:
         name = cfg["name"]
@@ -317,11 +326,13 @@ def evaluate_ablations(
         pre = TextPreprocessor(**kwargs)
         t0 = time.time()
         print(f"  [{name}] preprocessing {len(sample_df):,} rows ...", end="", flush=True)
-        cleaned: list[str] = []
-        for _, row in sample_df.iterrows():
-            lang_code = (row[text_lang_column] if text_lang_column else "en").lower()
-            nlp = nlp_by_lang.get(lang_code.upper()) if nlp_by_lang else None
-            cleaned.append(pre.preprocess(row[text_column], nlp=nlp, lang=lang_code))
+        cleaned: list[str] = [""] * len(sample_df)
+        for lang, idxs in groups.items():
+            batch = [texts_by_idx[i] for i in idxs]
+            nlp = nlp_by_lang.get(lang) if nlp_by_lang else None
+            out = pre.preprocess_batch(batch, nlp=nlp, lang=lang.lower())
+            for j, i in enumerate(idxs):
+                cleaned[i] = out[j]
         t_pre = time.time() - t0
         print(f" {t_pre:.1f}s   evaluating ...", end="", flush=True)
         t0 = time.time()

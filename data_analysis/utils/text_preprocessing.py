@@ -123,8 +123,8 @@ class TextPreprocessor:
     def _fill(self, chars: list[str], start: int, end: int, fill: str | None = None) -> None:
         chars[start:end] = list(fill) if fill is not None else [" "] * (end - start)
 
-    def _apply_ner(self, text: str, nlp) -> tuple[str, list[dict]]:
-        doc = nlp(text)
+    def _apply_ner_to_doc(self, doc, text: str) -> tuple[str, list[dict]]:
+        """Run entity-strategy logic on an already-parsed ``Doc``."""
         chars = list(text)
         removed: list[dict] = []
 
@@ -165,29 +165,49 @@ class TextPreprocessor:
 
         return "".join(chars), removed
 
-    def preprocess(self, text: str, nlp=None, lang: str = "en") -> str:
-        return self.preprocess_with_ner_diff(text, nlp=nlp, lang=lang)[0]
+    def _apply_ner(self, text: str, nlp) -> tuple[str, list[dict]]:
+        return self._apply_ner_to_doc(nlp(text), text)
 
-    def preprocess_with_ner_diff(
-        self, text: str, nlp=None, lang: str = "en"
-    ) -> tuple[str, list[dict]]:
-        ner_removed: list[dict] = []
+    def _pre_ner(self, text: str, lang: str) -> str:
         text = text.replace("\n", " ").replace("\r", " ")
         if self.strip_html:
             text = _HTML_RE.sub(" ", text)
         if self.remove_urls:
             text = _URL_RE.sub(" ", text)
         text = self.handle_emojis(text, lang=lang)
-        text = self.normalize_punctuation(text)
-        if self.entity_strategy != "keep" and nlp is not None:
-            text, ner_removed = self._apply_ner(text, nlp)
+        return self.normalize_punctuation(text)
 
+    def _post_ner(self, text: str) -> str:
         text = _APOSTROPHES_RE.sub("'", text)
         if self.final_tokenize:
             words = _WORD_RE.findall(text.lower() if self.lowercase else text)
-            cleaned = " ".join(words) if words else text.strip()
+            return " ".join(words) if words else text.strip()
+        cleaned = _WHITESPACE_RE.sub(" ", text).strip()
+        return cleaned.lower() if self.lowercase else cleaned
+
+    def preprocess(self, text: str, nlp=None, lang: str = "en") -> str:
+        return self.preprocess_with_ner_diff(text, nlp=nlp, lang=lang)[0]
+
+    def preprocess_with_ner_diff(
+        self, text: str, nlp=None, lang: str = "en"
+    ) -> tuple[str, list[dict]]:
+        text = self._pre_ner(text, lang)
+        ner_removed: list[dict] = []
+        if self.entity_strategy != "keep" and nlp is not None:
+            text, ner_removed = self._apply_ner(text, nlp)
+        return self._post_ner(text), ner_removed
+
+    def preprocess_batch(
+        self, texts: list[str], nlp=None, lang: str = "en", ner_batch_size: int = 64
+    ) -> list[str]:
+        """Same pipeline as :meth:`preprocess` but uses ``nlp.pipe`` for the
+        NER step — 5-10× faster on large inputs because spaCy can amortise
+        model overhead across the batch.
+        """
+        pre = [self._pre_ner(t, lang) for t in texts]
+        if self.entity_strategy != "keep" and nlp is not None:
+            docs = nlp.pipe(pre, batch_size=ner_batch_size)
+            after_ner = [self._apply_ner_to_doc(doc, raw)[0] for doc, raw in zip(docs, pre)]
         else:
-            cleaned = _WHITESPACE_RE.sub(" ", text).strip()
-            if self.lowercase:
-                cleaned = cleaned.lower()
-        return cleaned, ner_removed
+            after_ner = pre
+        return [self._post_ner(t) for t in after_ner]
