@@ -24,6 +24,8 @@ dependencies = [
     "fasttext-wheel>=0.9.2",
     "spacy>=3.7",
     "ipykernel>=7.2.0",
+    "emoji>=2.15.0",
+    "emosent-py>=0.1.7",
 ]
 
 [dependency-groups]

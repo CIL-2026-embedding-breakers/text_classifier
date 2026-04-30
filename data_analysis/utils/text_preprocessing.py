@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Literal
 
+EmojiStrategy = Literal["keep", "strip", "demojize", "pos_neg_token"]
+EntityStrategy = Literal["keep", "strip_descriptors", "replace_with_token"]
 
-# ---------------------------------------------------------------------------
-# Compiled patterns — built once at import time
-# ---------------------------------------------------------------------------
 
 _EMOJI_RE = re.compile(
     "["
@@ -22,328 +21,173 @@ _EMOJI_RE = re.compile(
     "]+",
     flags=re.UNICODE,
 )
-_URL_RE = re.compile(r'https?://\S+|www\.\S+', flags=re.IGNORECASE)
-_HTML_RE = re.compile(r'<[^>]+>')
-_PUNCT_RUN_RE = re.compile(r'([!?.,;:\-])\1+')
+_URL_RE = re.compile(r"https?://\S+|www\.\S+", flags=re.IGNORECASE)
+_HTML_RE = re.compile(r"<[^>]+>")
+_INTENSITY_BANG_RE = re.compile(r"!(?:[!\s]*!)*")
+_INTENSITY_QUEST_RE = re.compile(r"\?(?:[?\s]*\?)*")
+_OTHER_PUNCT_RUN_RE = re.compile(r"([.,;:\-])\1+")
 _APOSTROPHES_RE = re.compile(r"[‘’ʼʹʻ`´]")
 _WORD_RE = re.compile(r"\b\w+(?:'\w+)*\b")
+_WHITESPACE_RE = re.compile(r"\s+")
 
-_DE_VARIANTS: frozenset[str] = frozenset({"NDS", "ALS", "BAR", "LB", "GSW"})
-_NER_FILTER_TYPES: frozenset[str] = frozenset({"PRODUCT", "ORG", "PERSON"})
-
-# Universal POS tags of tokens inside PRODUCT/ORG spans that carry language
-# signal and should be stripped (adjectives, common nouns, adverbs).
-# PROPN (brand names) and NUM/X/SYM (model codes) are deliberately kept.
+_NER_ENTITY_TYPES: frozenset[str] = frozenset({"PRODUCT", "ORG", "PERSON"})
+# POS tags inside ORG/PRODUCT spans considered "descriptor" (stripped under
+# strip_descriptors). PROPN (brand names) and NUM/X/SYM (model codes) survive.
 _DESCRIPTOR_POS: frozenset[str] = frozenset({"ADJ", "NOUN", "ADV"})
 
-# spaCy Matcher token-level patterns for spaced / obfuscated URLs that the
-# regex pass would miss (e.g. "http : // example . com", "google dot com").
-_SPACED_URL_PATTERNS: list[list[dict]] = [
-    # "http : // word"
-    [
-        {"LOWER": {"IN": ["http", "https"]}},
-        {"ORTH": ":"},
-        {"ORTH": "//"},
-        {"IS_ASCII": True},
-    ],
-    # "www . domain . tld"
-    [
-        {"LOWER": "www"},
-        {"ORTH": "."},
-        {"IS_ALPHA": True},
-        {"ORTH": "."},
-        {"IS_ALPHA": True},
-    ],
-    # "word dot word" / "word [dot] word"
-    [
-        {"IS_ALPHA": True},
-        {"LOWER": {"IN": ["dot", "[dot]", "(dot)"]}},
-        {"IS_ALPHA": True},
-    ],
-]
+_EMOJI_POS_THRESHOLD = 0.30
+_EMOJI_NEG_THRESHOLD = -0.30
+_EMOJI_TOKENS = {"pos": "<POS_EMOJI>", "neg": "<NEG_EMOJI>", "neu": "<NEU_EMOJI>"}
 
-# Per-worker cache: vocab object id → Matcher.  Populated lazily on first use
-# so that importing this module does not require spaCy to be installed.
-_url_matcher_cache: dict[int, Any] = {}
+_ENT_REPLACEMENT_TOKEN: dict[str, str] = {
+    "ORG":     "<BRAND>",
+    "PRODUCT": "<PRODUCT>",
+    "PERSON":  "<PERSON>",
+}
 
 
-def _get_url_matcher(nlp) -> Any:
-    """Return (and cache per vocab) a spaCy Matcher for obfuscated URLs."""
-    key = id(nlp.vocab)
-    if key not in _url_matcher_cache:
-        from spacy.matcher import Matcher  # type: ignore[import-untyped]
-        m = Matcher(nlp.vocab)
-        m.add("SPACED_URL", _SPACED_URL_PATTERNS)
-        _url_matcher_cache[key] = m
-    return _url_matcher_cache[key]
+def _replace_emojis_with_sentiment_tokens(text: str) -> str:
+    from emosent import get_emoji_sentiment_rank
 
+    def _classify(match: re.Match) -> str:
+        out = []
+        for ch in match.group():
+            try:
+                rank = get_emoji_sentiment_rank(ch)
+            except (KeyError, ValueError):
+                rank = None
+            score = float(rank["sentiment_score"]) if rank else 0.0
+            if score >= _EMOJI_POS_THRESHOLD:
+                out.append(_EMOJI_TOKENS["pos"])
+            elif score <= _EMOJI_NEG_THRESHOLD:
+                out.append(_EMOJI_TOKENS["neg"])
+            else:
+                out.append(_EMOJI_TOKENS["neu"])
+        return " " + " ".join(out) + " "
 
-# ---------------------------------------------------------------------------
-# Main class
-# ---------------------------------------------------------------------------
+    return _EMOJI_RE.sub(_classify, text)
+
 
 class TextPreprocessor:
-    """Two-stage text preprocessing pipeline.
+    """Configurable text preprocessor for review classification.
 
-    **Cleaning pipeline** (applied in :meth:`preprocess` /
-    :meth:`preprocess_with_ner_diff`):
+    Two output modes:
 
-    1. Normalise newlines → spaces (fasttext requirement).
-    2. Strip HTML/XML tags.
-    3. Strip plain URLs with regex.
-    4. Detect spaced/obfuscated URLs with spaCy Matcher and strip them.
-    5. Strip emojis.
-    6. Collapse repeated punctuation (``!!!!`` → ``!``).
-    7. **Descriptor-word removal inside PRODUCT/ORG spans** (spaCy NER):
-       - Find PRODUCT and ORG entity spans.
-       - Within each span erase only tokens whose POS tag is in
-         ``_DESCRIPTOR_POS`` (ADJ, NOUN, ADV) — generic language-bearing
-         words such as "wireless", "keyboard", "stainless".
-       - Brand names (PROPN) and model codes (NUM, X, SYM) are kept intact.
-       - PERSON entities near a brand span are removed entirely (they are
-         typically spaCy mislabellings of product model-code context).
-    8. Extract word tokens (Unicode letters + digits) and optionally lowercase.
-
-    Every step is independently toggleable for ablation studies.
-
-    Parameters
-    ----------
-    lowercase
-        Lower-case the output tokens.
-    strip_emojis
-        Remove emoji / pictograph characters.
-    collapse_punctuation
-        Collapse runs of identical punctuation.
-    remove_urls
-        Strip ``http``/``https``/``www`` URLs with regex.
-    strip_html
-        Strip HTML/XML tags.
-    filter_entities
-        Apply entity-aware descriptor removal (requires an *nlp* model at
-        call time).  Falls back to fasttext per-token scoring when *nlp* is
-        ``None`` and *model* is provided.
-    use_spacy_ner
-        Prefer spaCy NER over fasttext token scoring.
-    entity_score_threshold
-        Combined EN+DE probability threshold for the fasttext fallback.
-    ner_entity_types
-        spaCy entity label types to process.
-        Default: ``{"PRODUCT", "ORG", "PERSON"}``.
-    person_org_proximity
-        Maximum token distance between a PERSON span and the nearest
-        ORG/PRODUCT token for the PERSON to be removed entirely.
+    - ``final_tokenize=True`` returns a stream of lowercase word tokens joined
+      by spaces. Use for fasttext language detection (no punct, no emoji).
+    - ``final_tokenize=False`` keeps casing, punctuation, and any special
+      tokens (``<POS_EMOJI>``, ``<BRAND>``, …) intact. Use for BERT input.
     """
 
     def __init__(
         self,
         lowercase: bool = True,
-        strip_emojis: bool = True,
-        collapse_punctuation: bool = True,
+        emoji_strategy: EmojiStrategy = "strip",
+        punct_max_repeat: int | None = 3,
         remove_urls: bool = True,
         strip_html: bool = True,
-        filter_entities: bool = True,
-        use_spacy_ner: bool = True,
-        entity_score_threshold: float = 0.10,
-        ner_entity_types: frozenset[str] | None = None,
+        entity_strategy: EntityStrategy = "strip_descriptors",
         person_org_proximity: int = 2,
+        final_tokenize: bool = True,
     ) -> None:
         self.lowercase = lowercase
-        self.strip_emojis = strip_emojis
-        self.collapse_punctuation = collapse_punctuation
+        self.emoji_strategy = emoji_strategy
+        self.punct_max_repeat = punct_max_repeat
         self.remove_urls = remove_urls
         self.strip_html = strip_html
-        self.filter_entities = filter_entities
-        self.use_spacy_ner = use_spacy_ner
-        self.entity_score_threshold = entity_score_threshold
-        self.ner_entity_types = (
-            ner_entity_types if ner_entity_types is not None else _NER_FILTER_TYPES
-        )
+        self.entity_strategy = entity_strategy
         self.person_org_proximity = person_org_proximity
-
-    # ------------------------------------------------------------------
-    # Individual step methods
-    # ------------------------------------------------------------------
-
-    def remove_emojis(self, text: str) -> str:
-        return _EMOJI_RE.sub("", text)
-
-    def strip_html_tags(self, text: str) -> str:
-        return _HTML_RE.sub(" ", text)
-
-    def strip_urls(self, text: str) -> str:
-        return _URL_RE.sub(" ", text)
+        self.final_tokenize = final_tokenize
 
     def normalize_punctuation(self, text: str) -> str:
-        return _PUNCT_RUN_RE.sub(r"\1", text)
+        if self.punct_max_repeat is None:
+            return text
+        n = self.punct_max_repeat
+        text = _INTENSITY_BANG_RE.sub(lambda m: "!" * min(n, m.group().count("!")), text)
+        text = _INTENSITY_QUEST_RE.sub(lambda m: "?" * min(n, m.group().count("?")), text)
+        return _OTHER_PUNCT_RUN_RE.sub(r"\1", text)
 
-    def extract_words(self, text: str) -> list[str]:
-        text = _APOSTROPHES_RE.sub("'", text)
-        source = text.lower() if self.lowercase else text
-        return _WORD_RE.findall(source)
+    def handle_emojis(self, text: str, lang: str = "en") -> str:
+        strat = self.emoji_strategy
+        if strat == "keep":
+            return text
+        if strat == "strip":
+            return _EMOJI_RE.sub("", text)
+        if strat == "demojize":
+            import emoji
+            return emoji.demojize(text, language=lang.lower(), delimiters=(" ", " "))
+        if strat == "pos_neg_token":
+            return _replace_emojis_with_sentiment_tokens(text)
+        raise ValueError(f"Unknown emoji_strategy: {strat!r}")
 
-    def is_linguistic_token(self, token: str, model) -> bool:
-        """Return True if *token* carries EN/DE signal (fasttext fallback)."""
-        if len(token) < 2:
-            return False
-        labels, probs = model.predict(token.lower(), k=5)
-        en_de_langs = {"EN", "DE"} | _DE_VARIANTS
-        score = sum(
-            float(p)
-            for lbl, p in zip(labels, probs)
-            if lbl.replace("__label__", "").upper() in en_de_langs
-        )
-        return score >= self.entity_score_threshold
-
-    # ------------------------------------------------------------------
-    # Core NER + obfuscated-URL step
-    # ------------------------------------------------------------------
-
-    def _fill_text_array(self, text: list[str], idx_start: int, idx_end: int,
-                         fill_char: str = " ", fill_str: str | None = None) -> None:
-        """In-place: replace ``text[idx_start:idx_end]`` with spaces or a custom string."""
-        if fill_str is not None:
-            text[idx_start:idx_end] = list(fill_str)
-        else:
-            text[idx_start:idx_end] = [fill_char] * (idx_end - idx_start)
+    def _fill(self, chars: list[str], start: int, end: int, fill: str | None = None) -> None:
+        chars[start:end] = list(fill) if fill is not None else [" "] * (end - start)
 
     def _apply_ner(self, text: str, nlp) -> tuple[str, list[dict]]:
-        """Run NER-based descriptor removal and obfuscated-URL stripping.
-
-        Returns ``(cleaned_text, removed_entries)`` where each entry is::
-
-            {
-                "text":           <full entity / URL span text>,
-                "label":          <NER label or "SPACED_URL">,
-                "removed_tokens": <list of token strings that were blanked>,
-            }
-        """
         doc = nlp(text)
         chars = list(text)
         removed: list[dict] = []
 
-        # 1. Spaced / obfuscated URLs ----------------------------------------
-        matcher = _get_url_matcher(nlp)
-        for _, start, end in matcher(doc):
-            span_text = doc[start:end].text
-            span_tokens = [tok.text for tok in doc[start:end]]
-            for tok in doc[start:end]:
-                self._fill_text_array(chars, tok.idx, tok.idx + len(tok.text), fill_char=" ")
-                #TODO : Here define a per language fillchar /.fill string to preserve info that an URL was here but 
-                #       Make it Langugage neutral.
-            
-            removed.append({
-                "text": span_text,
-                "label": "SPACED_URL",
-                "removed_tokens": span_tokens,
-            })
-
-        # 2. Brand-entity token indices (anchor for PERSON proximity) ---------
         brand_token_indices: set[int] = {
-            tok.i
-            for ent in doc.ents
-            if ent.label_ in {"ORG", "PRODUCT"}
-            for tok in ent
+            tok.i for ent in doc.ents if ent.label_ in {"ORG", "PRODUCT"} for tok in ent
         }
 
-        # 3. Entity-aware descriptor removal ----------------------------------
-        for ent in doc.ents:
-            if ent.label_ not in self.ner_entity_types:
+        # Iterate in reverse char order so token-replacements (which can change
+        # the string length) do not invalidate earlier offsets.
+        for ent in sorted(doc.ents, key=lambda e: e.start_char, reverse=True):
+            if ent.label_ not in _NER_ENTITY_TYPES:
                 continue
 
             if ent.label_ == "PERSON":
-                # Keep PERSON unless it sits within person_org_proximity tokens
-                # of a brand entity (likely a mislabelled product-code token).
                 if not brand_token_indices:
                     continue
                 min_dist = min(
-                    abs(tok.i - anchor)
-                    for tok in ent
-                    for anchor in brand_token_indices
+                    abs(tok.i - anchor) for tok in ent for anchor in brand_token_indices
                 )
                 if min_dist > self.person_org_proximity:
                     continue
+                fill = _ENT_REPLACEMENT_TOKEN["PERSON"] if self.entity_strategy == "replace_with_token" else None
+                self._fill(chars, ent.start_char, ent.end_char, fill)
+                removed.append({"text": ent.text, "label": "PERSON", "removed_tokens": [ent.text]})
+                continue
 
-                self._fill_text_array(chars, ent.start_char, ent.end_char)
-
-                removed.append({
-                    "text": ent.text,
-                    "label": "PERSON",
-                    "removed_tokens": [ent.text],
-                })
-
+            if self.entity_strategy == "replace_with_token":
+                self._fill(chars, ent.start_char, ent.end_char, _ENT_REPLACEMENT_TOKEN[ent.label_])
+                removed.append({"text": ent.text, "label": ent.label_, "removed_tokens": [ent.text]})
             else:
-                # PRODUCT / ORG: remove only descriptor tokens (ADJ, NOUN, ADV).
-                # Brand names (PROPN) and model codes (NUM, X, SYM) are kept.
-                span_removed: list[str] = []
+                span_removed = []
                 for token in ent:
                     if token.pos_ in _DESCRIPTOR_POS:
-                        self._fill_text_array(chars, token.idx, token.idx + len(token.text))
+                        self._fill(chars, token.idx, token.idx + len(token.text))
                         span_removed.append(token.text)
                 if span_removed:
-                    removed.append({
-                        "text": ent.text,
-                        "label": ent.label_,
-                        "removed_tokens": span_removed,
-                    })
+                    removed.append({"text": ent.text, "label": ent.label_, "removed_tokens": span_removed})
 
         return "".join(chars), removed
 
-    def remove_named_entities(self, text: str, nlp) -> str:
-        """Convenience wrapper — returns only the cleaned string."""
-        cleaned, _ = self._apply_ner(text, nlp)
-        return cleaned
-
-    # ------------------------------------------------------------------
-    # Main entry points
-    # ------------------------------------------------------------------
-
-    def preprocess(self, text: str, model=None, nlp=None) -> str:
-        """Clean *text* and return a single-line string for language detection.
-
-        Pipeline: newline normalisation → HTML → URL (regex) → emoji →
-        punctuation → NER descriptor removal (spaCy) or token scoring
-        (fasttext fallback) → word extraction.
-        """
-        preprocessed, _ = self.preprocess_with_ner_diff(text, model, nlp)
-        return preprocessed
+    def preprocess(self, text: str, nlp=None, lang: str = "en") -> str:
+        return self.preprocess_with_ner_diff(text, nlp=nlp, lang=lang)[0]
 
     def preprocess_with_ner_diff(
-        self, text: str, model=None, nlp=None
+        self, text: str, nlp=None, lang: str = "en"
     ) -> tuple[str, list[dict]]:
-        """Clean *text* and also return details of every NER removal.
-
-        Returns
-        -------
-        preprocessed_text
-            The cleaned, single-line string ready for fasttext.
-        ner_removed
-            List of removal entries (see :meth:`_apply_ner` for structure).
-            Empty list when NER was not applied or nothing was removed.
-        """
         ner_removed: list[dict] = []
-
-        # fasttext rejects strings containing \\n
         text = text.replace("\n", " ").replace("\r", " ")
         if self.strip_html:
-            text = self.strip_html_tags(text)
+            text = _HTML_RE.sub(" ", text)
         if self.remove_urls:
-            text = self.strip_urls(text)
-        if self.strip_emojis:
-            text = self.remove_emojis(text)
-        if self.collapse_punctuation:
-            text = self.normalize_punctuation(text)
-        if self.filter_entities:
-            if self.use_spacy_ner and nlp is not None:
-                text, ner_removed = self._apply_ner(text, nlp)
-            elif model is not None:
-                tokens = _WORD_RE.findall(text)
-                text = " ".join(
-                    t for t in tokens if self.is_linguistic_token(t, model)
-                )
-        words = self.extract_words(text)
-        preprocessed = (
-            " ".join(words)
-            if words
-            else (text.lower().strip() if self.lowercase else text.strip())
-        )
-        return preprocessed, ner_removed
+            text = _URL_RE.sub(" ", text)
+        text = self.handle_emojis(text, lang=lang)
+        text = self.normalize_punctuation(text)
+        if self.entity_strategy != "keep" and nlp is not None:
+            text, ner_removed = self._apply_ner(text, nlp)
+
+        text = _APOSTROPHES_RE.sub("'", text)
+        if self.final_tokenize:
+            words = _WORD_RE.findall(text.lower() if self.lowercase else text)
+            cleaned = " ".join(words) if words else text.strip()
+        else:
+            cleaned = _WHITESPACE_RE.sub(" ", text).strip()
+            if self.lowercase:
+                cleaned = cleaned.lower()
+        return cleaned, ner_removed
