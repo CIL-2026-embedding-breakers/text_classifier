@@ -1,0 +1,29 @@
+# sweep_finetune.yaml
+program: sweeps.py
+method: grid
+metric:
+  name: eval/score
+  goal: maximize
+
+parameters:
+  # ---- Swept ----
+  lr:
+    values: [8.0e-6, 2.0e-5]
+  num_epochs:
+    values: [5]
+
+  # ---- Fixed ----
+  model_name:
+    value: "xlm-roberta-base"
+  training_type:
+    value: "full"
+  job_type:
+    value: "fine_tuning"
+  val_split:
+    value: 0.1
+  warmup_steps:
+    value: 1000
+  weight_decay:
+    value: 0.01
+  num_labels :
+    value: 5
