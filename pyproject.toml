@@ -13,15 +13,13 @@ dependencies = [
     "matplotlib",
     "requests",
     "pyyaml",
-    # --- Versions spécifiques pour le cluster Linux ---
+    # --- Linux cluster versions ---
     "torch>=2.7 ; sys_platform == 'linux'",
     "torchvision>=0.22 ; sys_platform == 'linux'",
     "triton==3.6.0 ; sys_platform == 'linux'",
-    # --- Versions standard pour le Mac (Apple Silicon / MPS) ---
+    # --- macOS (Apple Silicon / MPS) versions ---
     "torch==2.11.0 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "torchvision==0.26.0 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "ray>=2.55.0",
-    "fasttext-wheel>=0.9.2",
     "spacy>=3.7",
     "ipykernel>=7.2.0",
     "emoji>=2.15.0",
@@ -32,6 +30,7 @@ dependencies = [
     "datasets>=4.8.5",
     "peft>=0.19.1",
     "wandb>=0.27.0",
+    "lingua-language-detector>=2.1.1",
 ]
 
 [dependency-groups]

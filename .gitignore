@@ -11,3 +11,8 @@ __pycache__/
 wandb/
 logs/
 None/
+*.bin
+data/split/
+data/lang/
+data/splitlang_simple/
+data_analysis/models/

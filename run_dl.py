@@ -19,23 +19,29 @@ def get_run_config():
         job_type="fine_tuning",  # "mlm" or "fine_tuning"
 
         # Model
-        model_name="xlm-roberta-base",
+        model_name=os.environ.get("CIL_MODEL_NAME", "xlm-roberta-base"),
         training_type="lora",  # "lora", "full", or "head" (only for fine-tuning)
 
         # Optimization
-        lr=5e-5,
+        lr=5e-4,
         num_epochs=5,
         warmup_steps=1000,
         weight_decay=0.01,
         mlm_probability=0.15,  # Only relevant for MLM further pretraining
 
         # Data / task-specific
+        data_path=os.environ.get("CIL_DATA_PATH", "./data/split/"),
+        external_val_split=True,
         val_split=0.1,
         num_labels=5,
+        run_tag=os.environ.get("CIL_RUN_TAG", "multilingual"),
 
         # Preprocessing / input format
-        preprocessing_level="heavy",       # "none", "light", "medium", "heavy"
+        preprocessing_level="light",       # "none", "light", "medium", "heavy"
         input_format="review_only",        # "review_only", "title_plus_review"
+
+        # W&B grouping for the runs table; None = ungrouped
+        wandb_group=os.environ.get("CIL_WANDB_GROUP", None),
 
         # Optional custom W&B run name; if None, a descriptive one is built automatically
         run_name=None,
@@ -74,14 +80,16 @@ def build_default_configs(cfg):
         f"{model_short}_{cfg.training_type}"
         f"_{cfg.preprocessing_level}"
         f"_{cfg.input_format}"
+        f"_{cfg.run_tag}"
         f"_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
     )
 
     if cfg.job_type == "mlm":
         return MLM_Configs(
             model_name=cfg.model_name,
-            data_path="./data/",
+            data_path=cfg.data_path,
             val_split=cfg.val_split,
+            external_val_split=cfg.external_val_split,
             lora_configs=lora_cfg,
             training_configs=training_cfg,
             preprocessor_configs=preprocessor_cfg,
@@ -93,8 +101,9 @@ def build_default_configs(cfg):
 
     return Fine_Tuning_Configs(
         model_name=cfg.model_name,
-        data_path="./data/",
+        data_path=cfg.data_path,
         val_split=cfg.val_split,
+        external_val_split=cfg.external_val_split,
         lora_configs=lora_cfg,
         training_configs=training_cfg,
         preprocessor_configs=preprocessor_cfg,
@@ -116,6 +125,7 @@ def main():
             f"{model_short}_{cfg.training_type}"
             f"_{cfg.preprocessing_level}"
             f"_{cfg.input_format}"
+            f"_{cfg.run_tag}"
             f"_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
         )
     )
@@ -125,6 +135,8 @@ def main():
 
     run = wandb.init(
         project="cil-project",
+        group=cfg.wandb_group,
+        tags=[cfg.run_tag, model_short],
         name=full_run_name,
         config=vars(cfg),
         reinit=True,

@@ -44,6 +44,7 @@ class MLM_Configs:
     model_name: str     
     data_path: Path = Path("./data/")   
     val_split: float = 0.1     
+    external_val_split: bool = False
     lora_configs: LoRa_Configs = field(default_factory=LoRa_Configs)
     training_configs: General_Trainer_Configs = field(default_factory=General_Trainer_Configs)
     preprocessor_configs: Preprocessor_Configs = field(default_factory=Preprocessor_Configs)
@@ -58,6 +59,7 @@ class Fine_Tuning_Configs:
     model_name: str 
     data_path: Path = Path("./data/") 
     val_split: float = 0.1          
+    external_val_split: bool = False
     lora_configs: LoRa_Configs = field(default_factory=LoRa_Configs)
     training_configs: General_Trainer_Configs = field(default_factory=General_Trainer_Configs)
     preprocessor_configs: Preprocessor_Configs = field(default_factory=Preprocessor_Configs)

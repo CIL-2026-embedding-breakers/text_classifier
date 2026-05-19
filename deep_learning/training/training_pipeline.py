@@ -25,23 +25,31 @@ def training_pipeline(configs: Union[MLM_Configs, Fine_Tuning_Configs], susbampl
     else:
         raise ValueError("Invalid configuration type. Please provide either MLM_Configs or Fine_Tuning_Configs.")
     
-    df_all_train = pd.read_csv(f"{configs.data_path}/train.csv")
     test_df = pd.read_csv(f"{configs.data_path}/test.csv")
 
-    if susbample is not None:
-        df_all_train = df_all_train.sample(susbample, random_state=42).reset_index(drop=True)
-        print(f"Subsampled training data to {susbample} examples.")
-        
-    if train_type == "fine_tuning" and configs.num_labels > 1:
-        df_all_train["label"] = df_all_train["label"].astype(int)
+    if configs.external_val_split:
+        train_df = pd.read_csv(f"{configs.data_path}/train.csv")
+        val_df = pd.read_csv(f"{configs.data_path}/val.csv")
+        if susbample is not None:
+            train_df = train_df.sample(susbample, random_state=42).reset_index(drop=True)
+            print(f"Subsampled training data to {susbample} examples.")
     else:
-        df_all_train["label"] = df_all_train["label"].astype(float)
-
-    train_df, val_df = train_test_split(
+        df_all_train = pd.read_csv(f"{configs.data_path}/train.csv")
+        if susbample is not None:
+            df_all_train = df_all_train.sample(susbample, random_state=42).reset_index(drop=True)
+            print(f"Subsampled training data to {susbample} examples.")
+        train_df, val_df = train_test_split(
             df_all_train,
             test_size=configs.val_split,
-            random_state=42
+            random_state=42,
         )
+
+    if train_type == "fine_tuning" and configs.num_labels > 1:
+        train_df["label"] = train_df["label"].astype(int)
+        val_df["label"] = val_df["label"].astype(int)
+    else:
+        train_df["label"] = train_df["label"].astype(float)
+        val_df["label"] = val_df["label"].astype(float)
     
     train_dataset = Dataset.from_pandas(train_df)
     val_dataset = Dataset.from_pandas(val_df)
@@ -123,11 +131,15 @@ def initiate_model(configs: Union[MLM_Configs, Fine_Tuning_Configs], MLM=False):
 
 
     if configs.training_type == 'lora':
+        if "deberta-v" in configs.model_name:
+            target_modules = ["query_proj", "value_proj"]
+        else:
+            target_modules = ["query", "value"]
         lora_configs = LoraConfig(
                 task_type=TaskType.SEQ_CLS,
                 r=configs.lora_configs.r,
                 lora_alpha=configs.lora_configs.alpha,
-                target_modules=["query", "value"],
+                target_modules=target_modules,
                 lora_dropout=configs.lora_configs.dropout,
                 bias="lora_only",
             )
