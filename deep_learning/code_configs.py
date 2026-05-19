@@ -25,6 +25,8 @@ class General_Trainer_Configs:
 
 @dataclass
 class Preprocessor_Configs:
+    preprocessing_level: str = "light"
+    input_format: str = "review_only"
     max_length: int = 128
     truncation: bool = True
     padding: bool = False

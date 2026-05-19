@@ -16,29 +16,34 @@ def get_run_config():
     """Define your hyperparameters here instead of getting them from a sweep."""
     return SimpleNamespace(
         # Job / training type
-        job_type="fine_tuning",              # "mlm" or "fine_tuning"
+        job_type="fine_tuning",  # "mlm" or "fine_tuning"
 
         # Model
         model_name="xlm-roberta-base",
-        
         training_type="lora",  # "lora", "full", or "head" (only for fine-tuning)
+
         # Optimization
-        lr=2e-5,
-        num_epochs=3,
+        lr=5e-5,
+        num_epochs=5,
         warmup_steps=1000,
         weight_decay=0.01,
         mlm_probability=0.15,  # Only relevant for MLM further pretraining
+
         # Data / task-specific
         val_split=0.1,
-        num_labels=5,  
+        num_labels=5,
 
-        run_name="trial_run_fine_tune_xlm_roberta",  # Optional: set a custom run name for W&B
+        # Preprocessing / input format
+        preprocessing_level="heavy",       # "none", "light", "medium", "heavy"
+        input_format="review_only",        # "review_only", "title_plus_review"
+
+        # Optional custom W&B run name; if None, a descriptive one is built automatically
+        run_name=None,
     )
 
 
-
 def build_default_configs(cfg):
-    # LoRA config (only if training_type == 'lora')
+    # LoRA config (only if training_type == "lora")
     if cfg.training_type == "lora":
         lora_cfg = LoRa_Configs()
     else:
@@ -50,15 +55,27 @@ def build_default_configs(cfg):
         warmup_steps=cfg.warmup_steps,
         weight_decay=cfg.weight_decay,
     )
+
     if cfg.job_type == "mlm":
         training_cfg.per_device_eval_batch_size = 8
         training_cfg.per_device_train_batch_size = 8
-        training_cfg.gradient_accumulation_steps = 4 
-    
-    preprocessor_cfg = Preprocessor_Configs(max_length=256, truncation=True, padding=False)
+        training_cfg.gradient_accumulation_steps = 4
+
+    preprocessor_cfg = Preprocessor_Configs(
+        max_length=256,
+        truncation=True,
+        padding=False,
+        preprocessing_level=cfg.preprocessing_level,
+        input_format=cfg.input_format,
+    )
 
     model_short = cfg.model_name.split("/")[-1]
-    tag = f"{model_short}_{cfg.training_type}_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
+    tag = (
+        f"{model_short}_{cfg.training_type}"
+        f"_{cfg.preprocessing_level}"
+        f"_{cfg.input_format}"
+        f"_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
+    )
 
     if cfg.job_type == "mlm":
         return MLM_Configs(
@@ -71,7 +88,7 @@ def build_default_configs(cfg):
             mlm_probability=cfg.mlm_probability,
             training_type=cfg.training_type,
             saving_dir=Path(f"./mlm_further_pretraining/{tag}"),
-            run_name=f"mlm_further_pretraining_{model_short}_{cfg.training_type}_run",
+            run_name=tag,
         )
 
     return Fine_Tuning_Configs(
@@ -83,21 +100,32 @@ def build_default_configs(cfg):
         preprocessor_configs=preprocessor_cfg,
         training_type=cfg.training_type,
         saving_dir=Path(f"./fine_tuning/{tag}"),
-        num_labels=cfg.num_labels
+        output_path=Path(f"./outputs/{tag}"),
+        num_labels=cfg.num_labels,
     )
 
 
 def main():
     cfg = get_run_config()
 
-    # Optional: keep wandb logging, just without sweeps.
-    # Set USE_WANDB=0 to disable entirely, or run `wandb offline` / `wandb disabled`.
-    run = None
+    model_short = cfg.model_name.split("/")[-1]
+    full_run_name = (
+        cfg.run_name
+        if cfg.run_name is not None
+        else (
+            f"{model_short}_{cfg.training_type}"
+            f"_{cfg.preprocessing_level}"
+            f"_{cfg.input_format}"
+            f"_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
+        )
+    )
 
+    run = None
     os.environ["WANDB_WATCH"] = "gradients"
+
     run = wandb.init(
-        project="cil-text-classification",
-        name=cfg.run_name,
+        project="cil-project",
+        name=full_run_name,
         config=vars(cfg),
         reinit=True,
     )
@@ -105,15 +133,14 @@ def main():
     try:
         configs = build_default_configs(cfg)
 
-        run_id = run.id if run is not None else "manual"
-        configs.run_name = (
-            f"{cfg.model_name.split('/')[-1]}_{cfg.training_type}_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
-        )
+        # Ensure downstream pipeline uses the same descriptive run name
+        configs.run_name = full_run_name
 
-        training_pipeline(configs)  
+        training_pipeline(configs)
     finally:
         if run is not None:
             run.finish()
+
 
 if __name__ == "__main__":
     main()
