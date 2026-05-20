@@ -125,7 +125,7 @@ def initiate_model(configs: Union[MLM_Configs, Fine_Tuning_Configs], MLM=False):
     if MLM:
         model = AutoModelForMaskedLM.from_pretrained(configs.model_name)
     else:
-        model = AutoModelForSequenceClassification.from_pretrained(configs.model_name, num_labels=configs.num_labels)
+        model = AutoModelForSequenceClassification.from_pretrained(configs.model_name, num_labels=configs.num_labels, torch_dtype=torch.float32,)
 
     tokenizer = AutoTokenizer.from_pretrained(configs.model_name)
 
@@ -133,15 +133,17 @@ def initiate_model(configs: Union[MLM_Configs, Fine_Tuning_Configs], MLM=False):
     if configs.training_type == 'lora':
         if "deberta-v" in configs.model_name:
             target_modules = ["query_proj", "value_proj"]
+            bias = "none"
         else:
             target_modules = ["query", "value"]
+            bias = "lora_only"
         lora_configs = LoraConfig(
                 task_type=TaskType.SEQ_CLS,
                 r=configs.lora_configs.r,
                 lora_alpha=configs.lora_configs.alpha,
                 target_modules=target_modules,
                 lora_dropout=configs.lora_configs.dropout,
-                bias="lora_only",
+                bias=bias,
             )
         model = get_peft_model(model, lora_configs)
     

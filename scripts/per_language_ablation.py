@@ -30,7 +30,7 @@ def load(run_dir):
 
 def show(name, true, pred):
     s, mae, acc = score(true, pred)
-    print(f"  {name:<46}  score={s:.4f}  MAE={mae:.4f}  acc={acc:.4f}  (n={len(pred)})")
+    print(f"  {name:<48}  score={s:.4f}  MAE={mae:.4f}  acc={acc:.4f}  (n={len(pred)})")
 
 
 multi      = load(MULTI_DIR)
@@ -58,11 +58,14 @@ show("multilingual on DE bucket",        mb_de["true_label"],  mb_de["predicted_
 show("multilingual on UNCERTAIN bucket", mb_unc["true_label"], mb_unc["predicted_label"])
 print()
 
-print("Per-bucket scores from each specialist:")
-show("xlmr_en   on EN bucket",   xlmr_en["true_label"],    xlmr_en["predicted_label"])
-show("deberta_en on EN bucket",  deberta_en["true_label"], deberta_en["predicted_label"])
-show("xlmr_de   on DE bucket",   xlmr_de["true_label"],    xlmr_de["predicted_label"])
-show("gbert_de  on DE bucket",   gbert_de["true_label"],   gbert_de["predicted_label"])
+print("EN specialists on EN bucket:")
+show("xlmr_en   (same-backbone control)", xlmr_en["true_label"],    xlmr_en["predicted_label"])
+show("deberta_en (monolingual)",          deberta_en["true_label"], deberta_en["predicted_label"])
+print()
+
+print("DE specialists on DE bucket:")
+show("xlmr_de  (same-backbone control)", xlmr_de["true_label"],  xlmr_de["predicted_label"])
+show("gbert_de (monolingual)",           gbert_de["true_label"], gbert_de["predicted_label"])
 print()
 
 print("=== Strategy A: drop UNCERTAIN ===")
@@ -71,11 +74,11 @@ show("multilingual on EN+DE rows", mb_union["true_label"], mb_union["predicted_l
 
 true_xlmr = pd.concat([xlmr_en["true_label"],    xlmr_de["true_label"]])
 pred_xlmr = pd.concat([xlmr_en["predicted_label"], xlmr_de["predicted_label"]])
-show("xlmr specialists (EN+DE only)", true_xlmr, pred_xlmr)
+show("xlmr_en + xlmr_de  (data-only specialization)", true_xlmr, pred_xlmr)
 
 true_mono = pd.concat([deberta_en["true_label"],    gbert_de["true_label"]])
 pred_mono = pd.concat([deberta_en["predicted_label"], gbert_de["predicted_label"]])
-show("monolingual specialists (EN+DE only)", true_mono, pred_mono)
+show("deberta_en + gbert_de  (monolingual)", true_mono, pred_mono)
 print()
 
 print("=== Strategy B: specialists + multilingual fallback for UNCERTAIN ===")

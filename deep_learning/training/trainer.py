@@ -49,7 +49,7 @@ class General_Trainer():
             logging_first_step=True,
             run_name=getattr(tc, "run_name", None),
             report_to=["wandb"],
-            bf16=True,
+            bf16="deberta-v" not in self.configs.model_name,
             dataloader_num_workers=tc.dataloader_num_workers,
         )
 
