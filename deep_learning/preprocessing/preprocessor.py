@@ -31,6 +31,7 @@ class Preprocessor:
         print("Preprocessor config:")
         print("  preprocessing_level =", self.configs.preprocessing_level)
         print("  input_format =", self.configs.input_format)
+        print("  title_review_delimiter_mode =", self.configs.title_review_delimiter_mode)
 
     def split_title_review(self, text: object):
         raw = "" if pd.isna(text) else str(text)
@@ -48,9 +49,26 @@ class Preprocessor:
             return parts["review"]
 
         if self.configs.input_format == "title_plus_review":
+            delimiter_mode = self.configs.title_review_delimiter_mode
+
             if parts["had_title"]:
-                return f"Title: {parts['title']} Review: {parts['review']}"
-            return f"Review: {parts['review']}"
+                if delimiter_mode == "with_tags":
+                    return f"Title: {parts['title']} Review: {parts['review']}"
+                if delimiter_mode == "plain_concat":
+                    return f"{parts['title']} {parts['review']}"
+                raise ValueError(
+                    f"Unknown title_review_delimiter_mode: {delimiter_mode}"
+                )
+
+            # no explicit title found
+            if delimiter_mode == "with_tags":
+                return f"Review: {parts['review']}"
+            if delimiter_mode == "plain_concat":
+                return parts["review"]
+
+            raise ValueError(
+                f"Unknown title_review_delimiter_mode: {delimiter_mode}"
+            )
 
         raise ValueError(f"Unknown input_format: {self.configs.input_format}")
 

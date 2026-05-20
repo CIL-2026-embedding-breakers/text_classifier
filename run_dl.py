@@ -34,8 +34,9 @@ def get_run_config():
         num_labels=5,
 
         # Preprocessing / input format
-        preprocessing_level="medium",       # "none", "light", "medium", "heavy"
-        input_format="review_only",        # "review_only", "title_plus_review"
+        preprocessing_level="none",       # "none", "light", "medium", "heavy"
+        input_format="title_plus_review",        # "review_only", "title_plus_review"
+        title_review_delimiter_mode="plain_concat",  # "with_tags" or "plain_concat", only relevant if input_format == "title_plus_review"
 
         # Optional custom W&B run name; if None, a descriptive one is built automatically
         run_name=None,
@@ -62,20 +63,22 @@ def build_default_configs(cfg):
         training_cfg.gradient_accumulation_steps = 4
 
     preprocessor_cfg = Preprocessor_Configs(
-        max_length=256,
-        truncation=True,
-        padding=False,
-        preprocessing_level=cfg.preprocessing_level,
-        input_format=cfg.input_format,
-    )
+    max_length=256,
+    truncation=True,
+    padding=False,
+    preprocessing_level=cfg.preprocessing_level,
+    input_format=cfg.input_format,
+    title_review_delimiter_mode=cfg.title_review_delimiter_mode,
+)
 
     model_short = cfg.model_name.split("/")[-1]
     tag = (
-        f"{model_short}_{cfg.training_type}"
-        f"_{cfg.preprocessing_level}"
-        f"_{cfg.input_format}"
-        f"_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
-    )
+    f"{model_short}_{cfg.training_type}"
+    f"_{cfg.preprocessing_level}"
+    f"_{cfg.input_format}"
+    f"_{cfg.title_review_delimiter_mode}"
+    f"_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
+)
 
     if cfg.job_type == "mlm":
         return MLM_Configs(
@@ -110,15 +113,16 @@ def main():
 
     model_short = cfg.model_name.split("/")[-1]
     full_run_name = (
-        cfg.run_name
-        if cfg.run_name is not None
-        else (
-            f"{model_short}_{cfg.training_type}"
-            f"_{cfg.preprocessing_level}"
-            f"_{cfg.input_format}"
-            f"_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
-        )
+    cfg.run_name
+    if cfg.run_name is not None
+    else (
+        f"{model_short}_{cfg.training_type}"
+        f"_{cfg.preprocessing_level}"
+        f"_{cfg.input_format}"
+        f"_{cfg.title_review_delimiter_mode}"
+        f"_lr{cfg.lr:.2e}_ep{cfg.num_epochs}"
     )
+)
 
     run = None
     os.environ["WANDB_WATCH"] = "gradients"
