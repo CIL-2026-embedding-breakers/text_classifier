@@ -34,7 +34,7 @@ def get_run_config():
         num_labels=5,
 
         # Preprocessing / input format
-        preprocessing_level="heavy",       # "none", "light", "medium", "heavy"
+        preprocessing_level="medium",       # "none", "light", "medium", "heavy"
         input_format="review_only",        # "review_only", "title_plus_review"
 
         # Optional custom W&B run name; if None, a descriptive one is built automatically
