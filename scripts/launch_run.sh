@@ -24,6 +24,11 @@ export TRANSFORMERS_CACHE="$HF_HOME/transformers"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
 mkdir -p "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE"
 
+# --- Checkpoints to scratch, final models to home -----------------------
+export CIL_CHECKPOINT_ROOT="${CIL_CHECKPOINT_ROOT:-/work/scratch/sgodey/text_classifier_cache/checkpoints}"
+export SAVE_MODEL_DIR="${SAVE_MODEL_DIR:-$SLURM_SUBMIT_DIR/final_models}"
+mkdir -p "$CIL_CHECKPOINT_ROOT" "$SAVE_MODEL_DIR"
+
 # --- Info ----------------------------------------------------------------
 echo "Job ID:        $SLURM_JOB_ID"
 echo "Job name:      $SLURM_JOB_NAME"

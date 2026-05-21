@@ -16,15 +16,15 @@ def get_run_config():
     """Define your hyperparameters here instead of getting them from a sweep."""
     return SimpleNamespace(
         # Job / training type
-        job_type="fine_tuning",  # "mlm" or "fine_tuning"
+        job_type=os.environ.get("CIL_JOB_TYPE", "fine_tuning"),  # "mlm" or "fine_tuning"
 
         # Model
         model_name=os.environ.get("CIL_MODEL_NAME", "xlm-roberta-base"),
-        training_type="lora",  # "lora", "full", or "head" (only for fine-tuning)
+        training_type=os.environ.get("CIL_TRAINING_TYPE", "lora"),  # "lora", "full", or "head"
 
         # Optimization
-        lr=5e-4,
-        num_epochs=5,
+        lr=float(os.environ.get("CIL_LR", 5e-4)),
+        num_epochs=int(os.environ.get("CIL_EPOCHS", 5)),
         warmup_steps=1000,
         weight_decay=0.01,
         mlm_probability=0.15,  # Only relevant for MLM further pretraining
@@ -65,6 +65,11 @@ def build_default_configs(cfg):
     if cfg.job_type == "mlm":
         training_cfg.per_device_eval_batch_size = 8
         training_cfg.per_device_train_batch_size = 8
+        training_cfg.gradient_accumulation_steps = 4
+
+    if cfg.training_type == "full":
+        training_cfg.per_device_train_batch_size = 16
+        training_cfg.per_device_eval_batch_size = 32
         training_cfg.gradient_accumulation_steps = 4
 
     preprocessor_cfg = Preprocessor_Configs(

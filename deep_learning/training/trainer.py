@@ -5,6 +5,7 @@ from os import PathLike
 from typing import Union
 from dataclasses import dataclass, asdict
 from transformers import PreTrainedModel, Trainer, TrainingArguments, DataCollatorWithPadding, DefaultDataCollator
+from transformers.trainer_utils import get_last_checkpoint
 from deep_learning.preprocessing.preprocessor import Preprocessor
 from deep_learning.code_configs import MLM_Configs, Fine_Tuning_Configs
     
@@ -20,9 +21,13 @@ class General_Trainer():
 
     def train(self, train_dataset, eval_dataset = None, output_dir="./results"):
         train_dataset = self.preprocessor(train_dataset)
-        
+
         if eval_dataset is not None:
             eval_dataset = self.preprocessor(eval_dataset)
+
+        ckpt_root = os.environ.get("CIL_CHECKPOINT_ROOT")
+        if ckpt_root:
+            output_dir = f"{ckpt_root}/{self.configs.run_name}"
 
         tc = self.configs.training_configs
         self.training_args = TrainingArguments(
@@ -37,12 +42,13 @@ class General_Trainer():
             lr_scheduler_type=tc.lr_scheduler_type,
             # --- saving / eval ---
             eval_strategy="steps",
-            eval_steps=1000,  
-            save_strategy="no",              # <-- don't save checkpoints
-            # save_total_limit=1,            # <-- not needed when not saving
-            load_best_model_at_end=False,    # <-- must be False when save_strategy="no"
-            # metric_for_best_model='score', # <-- only relevant with load_best_model_at_end
-            # greater_is_better=True,
+            eval_steps=1000,
+            save_strategy="steps",
+            save_steps=1000,
+            save_total_limit=2,
+            load_best_model_at_end=True,
+            metric_for_best_model="score",
+            greater_is_better=True,
             # --- logging ---
             logging_strategy="steps",
             logging_steps=getattr(tc, "logging_steps", 50),
@@ -62,7 +68,8 @@ class General_Trainer():
             processing_class=self.preprocessor.tokenizer,
             compute_metrics=General_Trainer.compute_metrics_finetuning if isinstance(self.configs, Fine_Tuning_Configs) else General_Trainer.compute_metrics_mlm
         )
-        self.trainer.train()
+        last_ckpt = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
+        self.trainer.train(resume_from_checkpoint=last_ckpt)
 
         self.trainer.save_model(f"{os.environ.get('SAVE_MODEL_DIR')}/{self.configs.run_name}")  # Save the final model after training
 
