@@ -72,10 +72,6 @@ def build_default_configs(cfg):
         training_cfg.per_device_eval_batch_size = 16
         training_cfg.gradient_accumulation_steps = 8
 
-    if cfg.training_type == "lora":
-        training_cfg.per_device_train_batch_size = 8
-        training_cfg.per_device_eval_batch_size = 16
-        training_cfg.gradient_accumulation_steps = 8
 
     preprocessor_cfg = Preprocessor_Configs(
         max_length=256,
