@@ -16,7 +16,7 @@ class General_Trainer_Configs:
     metric_for_best_model: str = "score"
     greater_is_better: bool = True
     report_to: str = "wandb"
-    dataloader_num_workers: int = 4
+    dataloader_num_workers: int = 3
 
     # logging / wandb
     logging_steps: int = 50

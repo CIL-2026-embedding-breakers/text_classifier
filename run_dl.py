@@ -38,7 +38,7 @@ def get_run_config():
 
         # Preprocessing / input format
         preprocessing_level="light",       # "none", "light", "medium", "heavy"
-        input_format="review_only",        # "review_only", "title_plus_review"
+        input_format="title_plus_review",        # "review_only", "title_plus_review"
 
         # W&B grouping for the runs table; None = ungrouped
         wandb_group=os.environ.get("CIL_WANDB_GROUP", None),

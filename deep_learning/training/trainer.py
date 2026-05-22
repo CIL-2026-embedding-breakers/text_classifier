@@ -49,7 +49,7 @@ class General_Trainer():
             load_best_model_at_end=True,
             metric_for_best_model="score",
             greater_is_better=True,
-            gradient_checkpointing=getattr(self.configs, "training_type", "") == "full",
+            gradient_checkpointing=getattr(self.configs, "training_type", "") in ("full", "lora"),
             # --- logging ---
             logging_strategy="steps",
             logging_steps=getattr(tc, "logging_steps", 50),
