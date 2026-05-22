@@ -49,6 +49,7 @@ class General_Trainer():
             load_best_model_at_end=True,
             metric_for_best_model="score",
             greater_is_better=True,
+            gradient_checkpointing=(getattr(self.configs, "training_type", "") == "full"),
             # --- logging ---
             logging_strategy="steps",
             logging_steps=getattr(tc, "logging_steps", 50),
@@ -59,6 +60,7 @@ class General_Trainer():
             dataloader_num_workers=tc.dataloader_num_workers,
         )
 
+        is_mlm = isinstance(self.configs, MLM_Configs)
         self.trainer = Trainer(
             model=self.model,
             args=self.training_args,
@@ -66,7 +68,8 @@ class General_Trainer():
             eval_dataset=eval_dataset,
             data_collator=self.data_collator,
             processing_class=self.preprocessor.tokenizer,
-            compute_metrics=General_Trainer.compute_metrics_finetuning if isinstance(self.configs, Fine_Tuning_Configs) else General_Trainer.compute_metrics_mlm
+            compute_metrics=General_Trainer.compute_metrics_mlm if is_mlm else General_Trainer.compute_metrics_finetuning,
+            preprocess_logits_for_metrics=(lambda logits, labels: logits.argmax(dim=-1)) if is_mlm else None,
         )
         last_ckpt = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
         self.trainer.train(resume_from_checkpoint=last_ckpt)
@@ -100,7 +103,7 @@ class General_Trainer():
         Standard MLM metric: perplexity.
         """
         predictions, labels = eval_pred
-        predictions = np.argmax(predictions, axis=-1)
+        # predictions already argmax'd by preprocess_logits_for_metrics
         mask = labels != -100
         masked_labels = labels[mask]
         masked_predictions = predictions[mask]

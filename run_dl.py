@@ -68,9 +68,9 @@ def build_default_configs(cfg):
         training_cfg.gradient_accumulation_steps = 4
 
     if cfg.training_type == "full":
-        training_cfg.per_device_train_batch_size = 16
-        training_cfg.per_device_eval_batch_size = 32
-        training_cfg.gradient_accumulation_steps = 4
+        training_cfg.per_device_train_batch_size = 8
+        training_cfg.per_device_eval_batch_size = 16
+        training_cfg.gradient_accumulation_steps = 8
 
     preprocessor_cfg = Preprocessor_Configs(
         max_length=256,
