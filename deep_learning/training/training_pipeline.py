@@ -141,16 +141,16 @@ def initiate_model(configs: Union[MLM_Configs, Fine_Tuning_Configs], MLM=False):
         else:
             target_modules = ["query", "value"]
             bias = "lora_only"
-        lora_configs = LoraConfig(
-                task_type=TaskType.SEQ_CLS,
-                r=configs.lora_configs.r,
-                lora_alpha=configs.lora_configs.alpha,
-                target_modules=target_modules,
-                lora_dropout=configs.lora_configs.dropout,
-                bias=bias,
-            )
-        model = get_peft_model(model, lora_configs)
-    
+            lora_configs = LoraConfig(
+                    task_type=TaskType.SEQ_CLS,
+                    r=configs.lora_configs.r,
+                    lora_alpha=configs.lora_configs.alpha,
+                    target_modules=target_modules,
+                    lora_dropout=configs.lora_configs.dropout,
+                    bias=bias,
+                )
+            model = get_peft_model(model, lora_configs)
+        
        
 
     elif configs.training_type == 'head':
