@@ -57,6 +57,7 @@ class General_Trainer():
             run_name=getattr(tc, "run_name", None),
             report_to=["wandb"],
             bf16="deberta-v" not in self.configs.model_name,
+            optim="adamw_torch_fused",
             dataloader_num_workers=tc.dataloader_num_workers,
         )
 
