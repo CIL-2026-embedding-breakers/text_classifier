@@ -150,6 +150,7 @@ def initiate_model(configs: Union[MLM_Configs, Fine_Tuning_Configs], MLM=False):
                     bias=bias,
                 )
             model = get_peft_model(model, lora_configs)
+            model.enable_input_require_grads()
         
        
 

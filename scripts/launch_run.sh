@@ -29,6 +29,8 @@ export CIL_CHECKPOINT_ROOT="${CIL_CHECKPOINT_ROOT:-/work/scratch/sgodey/text_cla
 export SAVE_MODEL_DIR="${SAVE_MODEL_DIR:-$SLURM_SUBMIT_DIR/final_models}"
 mkdir -p "$CIL_CHECKPOINT_ROOT" "$SAVE_MODEL_DIR"
 
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 # --- Info ----------------------------------------------------------------
 echo "Job ID:        $SLURM_JOB_ID"
 echo "Job name:      $SLURM_JOB_NAME"
