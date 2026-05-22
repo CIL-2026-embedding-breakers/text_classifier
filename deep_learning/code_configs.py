@@ -34,8 +34,8 @@ class Preprocessor_Configs:
 
 @dataclass
 class LoRa_Configs:
-    r: int = 8
-    alpha: int = 16
+    r: int = 16
+    alpha: int = 32
     dropout: float = 0.1
 
 

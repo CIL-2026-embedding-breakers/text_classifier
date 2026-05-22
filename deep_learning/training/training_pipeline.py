@@ -131,8 +131,12 @@ def initiate_model(configs: Union[MLM_Configs, Fine_Tuning_Configs], MLM=False):
 
 
     if configs.training_type == 'lora':
-        if "deberta-v" in configs.model_name:
+        name_lower = configs.model_name.lower()
+        if "deberta-v" in name_lower:
             target_modules = ["query_proj", "value_proj"]
+            bias = "none"
+        elif "modernbert" in name_lower or "moderngbert" in name_lower:
+            target_modules = ["Wqkv", "Wo"]
             bias = "none"
         else:
             target_modules = ["query", "value"]
