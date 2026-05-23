@@ -1,5 +1,6 @@
 import os
 import wandb
+import torch
 import numpy as np
 from os import PathLike
 from typing import Union
@@ -8,7 +9,32 @@ from transformers import PreTrainedModel, Trainer, TrainingArguments, DataCollat
 from transformers.trainer_utils import get_last_checkpoint
 from deep_learning.preprocessing.preprocessor import Preprocessor
 from deep_learning.code_configs import MLM_Configs, Fine_Tuning_Configs
-    
+
+
+class CustomTrainer(Trainer):
+    def __init__(self, *args, loss_type="ce", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.loss_type = loss_type
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits
+
+        if self.loss_type == "oll":
+            probs = torch.softmax(logits, dim=-1)
+            k = torch.arange(logits.shape[-1], device=logits.device).unsqueeze(0)
+            dist = (k - labels.unsqueeze(-1)).abs().float() ** 1.5
+            loss = (-torch.log(torch.clamp(1 - probs, min=1e-7)) * dist).sum(-1).mean()
+        elif self.loss_type == "emd":
+            probs = torch.softmax(logits, dim=-1)
+            target = torch.zeros_like(probs).scatter_(1, labels.unsqueeze(-1), 1.0)
+            loss = (probs.cumsum(-1) - target.cumsum(-1)).abs().sum(-1).mean()
+        else:
+            loss = torch.nn.functional.cross_entropy(logits, labels)
+
+        return (loss, outputs) if return_outputs else loss
+
 
 class General_Trainer():
     def __init__(self, configs: Union[MLM_Configs, Fine_Tuning_Configs], model: PreTrainedModel, data_collator: DefaultDataCollator, 
@@ -62,7 +88,7 @@ class General_Trainer():
         )
 
         is_mlm = isinstance(self.configs, MLM_Configs)
-        self.trainer = Trainer(
+        self.trainer = CustomTrainer(
             model=self.model,
             args=self.training_args,
             train_dataset=train_dataset,
@@ -71,6 +97,7 @@ class General_Trainer():
             processing_class=self.preprocessor.tokenizer,
             compute_metrics=General_Trainer.compute_metrics_mlm if is_mlm else General_Trainer.compute_metrics_finetuning,
             preprocess_logits_for_metrics=(lambda logits, labels: logits.argmax(dim=-1)) if is_mlm else None,
+            loss_type=os.environ.get("CIL_LOSS_TYPE", "ce") if not is_mlm else "ce",
         )
         last_ckpt = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
         self.trainer.train(resume_from_checkpoint=last_ckpt)
