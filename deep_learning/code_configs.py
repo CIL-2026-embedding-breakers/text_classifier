@@ -8,7 +8,7 @@ class General_Trainer_Configs:
     num_epochs: int = 3
     per_device_train_batch_size: int = 32
     gradient_accumulation_steps: int = 2
-    per_device_eval_batch_size: int = 64
+    per_device_eval_batch_size: int = 32
     learning_rate: float = 2e-5
     weight_decay: float = 0.01
     warmup_steps: int = 1000
@@ -35,8 +35,8 @@ class Preprocessor_Configs:
 
 @dataclass
 class LoRa_Configs:
-    r: int = 8
-    alpha: int = 16
+    r: int = 16
+    alpha: int = 32
     dropout: float = 0.1
 
 

@@ -8,9 +8,9 @@ metric:
 parameters:
   # ---- Swept ----
   lr:
-    values: [5.0e-4, 1.0e-3]
+    values: [1.0e-3, 1.0e-2]
   num_epochs:
-    values: [3, 5]
+    values: [2, 3]
 
   # ---- Fixed ----
   model_name:

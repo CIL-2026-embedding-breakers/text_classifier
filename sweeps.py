@@ -8,7 +8,7 @@ from deep_learning.code_configs import MLM_Configs, Fine_Tuning_Configs, LoRa_Co
 
 def main():
     # wandb.init() is called by the agent; config is injected
-    run = wandb.init(name="sweep_run", project="cil-text-classification", reinit=True)
+    run = wandb.init(name="sweep_run", project="cil-text-classification-scaling", reinit=True)
     try:
         sweep_cfg = wandb.config
 

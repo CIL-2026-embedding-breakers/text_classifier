@@ -27,6 +27,7 @@ class General_Trainer():
         tc = self.configs.training_configs
         self.training_args = TrainingArguments(
             output_dir=output_dir,
+            gradient_checkpointing=True,
             num_train_epochs=tc.num_epochs,
             per_device_train_batch_size=tc.per_device_train_batch_size,
             gradient_accumulation_steps=tc.gradient_accumulation_steps,

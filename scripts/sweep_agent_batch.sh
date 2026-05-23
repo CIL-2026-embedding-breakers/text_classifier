@@ -5,6 +5,7 @@
 #SBATCH --account=cil_jobs
 #SBATCH --time=24:00:00
 #SBATCH --ntasks=1
+#SBATCH --constraint=5060ti
 #SBATCH --cpus-per-gpu=4
 #SBATCH --mem-per-cpu=8G
 #SBATCH --gpus=1

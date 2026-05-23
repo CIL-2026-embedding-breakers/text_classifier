@@ -23,8 +23,8 @@ def get_run_config():
         training_type="lora",  # "lora", "full", or "head" (only for fine-tuning)
 
         # Optimization
-        lr=5e-5,
-        num_epochs=5,
+        lr=5e-4,
+        num_epochs=6,
         warmup_steps=1000,
         weight_decay=0.01,
         mlm_probability=0.15,  # Only relevant for MLM further pretraining
@@ -36,7 +36,7 @@ def get_run_config():
         # Preprocessing / input format
         preprocessing_level="none",       # "none", "light", "medium", "heavy"
         input_format="title_plus_review",        # "review_only", "title_plus_review"
-        title_review_delimiter_mode="plain_concat",  # "with_tags" or "plain_concat", only relevant if input_format == "title_plus_review"
+        title_review_delimiter_mode="with_tags",  # "with_tags" or "plain_concat", only relevant if input_format == "title_plus_review"
 
         # Optional custom W&B run name; if None, a descriptive one is built automatically
         run_name=None,
@@ -128,7 +128,7 @@ def main():
     os.environ["WANDB_WATCH"] = "gradients"
 
     run = wandb.init(
-        project="cil-project",
+        project="cil-project-scaling-laws",
         name=full_run_name,
         config=vars(cfg),
         reinit=True,

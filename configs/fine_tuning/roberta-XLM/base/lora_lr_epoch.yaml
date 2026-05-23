@@ -8,9 +8,9 @@ metric:
 parameters:
   # ---- Swept ----
   lr:
-    values: [5.0e-4]
+    values: [5.0e-4, 8.0e-4]
   num_epochs:
-    values: [8]
+    values: [5]
 
   # ---- Fixed ----
   model_name:
@@ -26,4 +26,4 @@ parameters:
   weight_decay:
     value: 0.01
   num_labels :
-    value: 5
+    value: 1
