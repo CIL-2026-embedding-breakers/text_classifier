@@ -30,6 +30,13 @@ class CustomTrainer(Trainer):
             probs = torch.softmax(logits, dim=-1)
             target = torch.zeros_like(probs).scatter_(1, labels.unsqueeze(-1), 1.0)
             loss = (probs.cumsum(-1) - target.cumsum(-1)).abs().sum(-1).mean()
+        elif self.loss_type == "soft":
+            sigma = 4.0
+            k = torch.arange(logits.shape[-1], device=logits.device).unsqueeze(0).float()
+            soft_target = torch.exp(-(k - labels.unsqueeze(-1).float()) ** 2 / (2 * sigma ** 2))
+            soft_target = soft_target / soft_target.sum(-1, keepdim=True)
+            log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+            loss = -(soft_target * log_probs).sum(-1).mean()
         else:
             loss = torch.nn.functional.cross_entropy(logits, labels)
 
