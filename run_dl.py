@@ -36,10 +36,10 @@ def get_run_config():
         num_labels=5,
         run_tag=os.environ.get("CIL_RUN_TAG", "multilingual"),
 
-        # Preprocessing / input format
-        preprocessing_level=os.environ.get("CIL_PREPROC", "light"),       # "none", "light", "medium", "heavy"
+        # Preprocessing / input format (defaults match youssef's known-good baseline)
+        preprocessing_level=os.environ.get("CIL_PREPROC", "none"),       # "none", "light", "medium", "heavy"
         input_format="title_plus_review",        # "review_only", "title_plus_review"
-        title_review_delimiter_mode=os.environ.get("CIL_DELIMITER_MODE", "with_tags"),  # "with_tags" or "plain_concat"
+        title_review_delimiter_mode=os.environ.get("CIL_DELIMITER_MODE", "plain_concat"),  # "with_tags" or "plain_concat"
 
         # W&B grouping for the runs table; None = ungrouped
         wandb_group=os.environ.get("CIL_WANDB_GROUP", None),
