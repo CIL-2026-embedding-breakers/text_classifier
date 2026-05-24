@@ -37,8 +37,9 @@ def get_run_config():
         run_tag=os.environ.get("CIL_RUN_TAG", "multilingual"),
 
         # Preprocessing / input format
-        preprocessing_level="light",       # "none", "light", "medium", "heavy"
+        preprocessing_level=os.environ.get("CIL_PREPROC", "light"),       # "none", "light", "medium", "heavy"
         input_format="title_plus_review",        # "review_only", "title_plus_review"
+        title_review_delimiter_mode=os.environ.get("CIL_DELIMITER_MODE", "with_tags"),  # "with_tags" or "plain_concat"
 
         # W&B grouping for the runs table; None = ungrouped
         wandb_group=os.environ.get("CIL_WANDB_GROUP", None),
@@ -79,6 +80,7 @@ def build_default_configs(cfg):
         padding=False,
         preprocessing_level=cfg.preprocessing_level,
         input_format=cfg.input_format,
+        title_review_delimiter_mode=cfg.title_review_delimiter_mode,
     )
 
     model_short = cfg.model_name.split("/")[-1]
