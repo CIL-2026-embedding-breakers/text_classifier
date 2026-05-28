@@ -19,7 +19,7 @@ text_classifier/
 │   ├── code_configs.py               # dataclasses: Fine_Tuning_Configs, LoRa_Configs, ...
 │   ├── preprocessing/
 │   │   ├── preprocessor.py           # text cleaning, title/review splitting
-│   │   └── preprocessing_sanity_check.ipynb
+│   │   └── preprocessing_sanity_check.ipynb # notebook with preprocessing examples 
 │   ├── training/
 │   │   ├── trainer.py                # CustomTrainer with CE / OLL / EMD / SOFT losses
 │   │   └── training_pipeline.py      # LoRA / full / head fine-tuning pipeline
@@ -28,7 +28,7 @@ text_classifier/
 │
 ├── baselines/
 │   ├── simplified_baselines.ipynb    # all baseline numbers in the paper (Tables 1, 2, 3)
-│   └── src/                          # TF-IDF + LR/SVC/NB models, preprocessing, lemmatizer
+│   └── src/                          # TF-IDF + LR/SVC/NB models, preprocessing, lemmatizer + notebook with baselines plots
 │
 ├── data_analysis/
 │   ├── data_visualisation.ipynb
