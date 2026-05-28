@@ -29,6 +29,11 @@ def get_run_config():
         weight_decay=0.01,
         mlm_probability=0.15,  # Only relevant for MLM further pretraining
 
+        # Optional batch-size overrides (None -> keep code defaults)
+        batch_size=int(os.environ["CIL_BATCH_SIZE"]) if "CIL_BATCH_SIZE" in os.environ else None,
+        eval_batch_size=int(os.environ["CIL_EVAL_BATCH_SIZE"]) if "CIL_EVAL_BATCH_SIZE" in os.environ else None,
+        grad_accum=int(os.environ["CIL_GRAD_ACCUM"]) if "CIL_GRAD_ACCUM" in os.environ else None,
+
         # Data / task-specific
         data_path=os.environ.get("CIL_DATA_PATH", "./data/split/"),
         external_val_split=True,
@@ -72,6 +77,14 @@ def build_default_configs(cfg):
         training_cfg.per_device_train_batch_size = 8
         training_cfg.per_device_eval_batch_size = 16
         training_cfg.gradient_accumulation_steps = 8
+
+    # Env-var overrides win over the defaults above (use for large LoRA runs).
+    if cfg.batch_size is not None:
+        training_cfg.per_device_train_batch_size = cfg.batch_size
+    if cfg.eval_batch_size is not None:
+        training_cfg.per_device_eval_batch_size = cfg.eval_batch_size
+    if cfg.grad_accum is not None:
+        training_cfg.gradient_accumulation_steps = cfg.grad_accum
 
 
     preprocessor_cfg = Preprocessor_Configs(

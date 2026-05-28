@@ -137,6 +137,9 @@ override when launching a run.
 | `CIL_DATA_PATH` | `./data/split/` | dir with `train.csv`, `val.csv`, `test.csv` |
 | `CIL_RUN_TAG` | `multilingual` | string appended to the W&B run name |
 | `CIL_WANDB_GROUP` | unset | optional W&B group |
+| `CIL_BATCH_SIZE` | unset | overrides `per_device_train_batch_size` (use for big LoRA runs) |
+| `CIL_EVAL_BATCH_SIZE` | unset | overrides `per_device_eval_batch_size` |
+| `CIL_GRAD_ACCUM` | unset | overrides `gradient_accumulation_steps` |
 | `CIL_CHECKPOINT_ROOT` | `/work/scratch/$USER/text_classifier_cache/checkpoints` | Trainer checkpoints |
 | `SAVE_MODEL_DIR` | `$SLURM_SUBMIT_DIR/final_models` | final model location |
 
