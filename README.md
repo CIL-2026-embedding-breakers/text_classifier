@@ -140,9 +140,6 @@ override when launching a run.
 | `CIL_BATCH_SIZE` | unset | overrides `per_device_train_batch_size` (use for big LoRA runs) |
 | `CIL_EVAL_BATCH_SIZE` | unset | overrides `per_device_eval_batch_size` |
 | `CIL_GRAD_ACCUM` | unset | overrides `gradient_accumulation_steps` |
-| `CIL_LORA_R` | unset | overrides LoRA rank `r` |
-| `CIL_LORA_ALPHA` | unset | overrides LoRA `alpha` |
-| `CIL_LORA_DROPOUT` | unset | overrides LoRA dropout |
 | `CIL_CHECKPOINT_ROOT` | `/work/scratch/$USER/text_classifier_cache/checkpoints` | Trainer checkpoints |
 | `SAVE_MODEL_DIR` | `$SLURM_SUBMIT_DIR/final_models` | final model location |
 
@@ -154,6 +151,7 @@ rm -rf /work/scratch/$USER/text_classifier_cache/checkpoints/<run_name>
 
 A few knobs are not exposed as env vars and must be edited in code:
 - `input_format` (`review_only` vs `title_plus_review`) → `run_dl.py:41`
+- LoRA `r`, `alpha`, `dropout` → `deep_learning/code_configs.py:LoRa_Configs`
 
 ---
 
