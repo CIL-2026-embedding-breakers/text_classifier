@@ -25,23 +25,31 @@ def training_pipeline(configs: Union[MLM_Configs, Fine_Tuning_Configs], susbampl
     else:
         raise ValueError("Invalid configuration type. Please provide either MLM_Configs or Fine_Tuning_Configs.")
     
-    df_all_train = pd.read_csv(f"{configs.data_path}/train.csv")
     test_df = pd.read_csv(f"{configs.data_path}/test.csv")
 
-    if susbample is not None:
-        df_all_train = df_all_train.sample(susbample, random_state=42).reset_index(drop=True)
-        print(f"Subsampled training data to {susbample} examples.")
-        
-    if train_type == "fine_tuning" and configs.num_labels > 1:
-        df_all_train["label"] = df_all_train["label"].astype(int)
+    if configs.external_val_split:
+        train_df = pd.read_csv(f"{configs.data_path}/train.csv")
+        val_df = pd.read_csv(f"{configs.data_path}/val.csv")
+        if susbample is not None:
+            train_df = train_df.sample(susbample, random_state=42).reset_index(drop=True)
+            print(f"Subsampled training data to {susbample} examples.")
     else:
-        df_all_train["label"] = df_all_train["label"].astype(float)
-
-    train_df, val_df = train_test_split(
+        df_all_train = pd.read_csv(f"{configs.data_path}/train.csv")
+        if susbample is not None:
+            df_all_train = df_all_train.sample(susbample, random_state=42).reset_index(drop=True)
+            print(f"Subsampled training data to {susbample} examples.")
+        train_df, val_df = train_test_split(
             df_all_train,
             test_size=configs.val_split,
-            random_state=42
+            random_state=42,
         )
+
+    if train_type == "fine_tuning" and configs.num_labels > 1:
+        train_df["label"] = train_df["label"].astype(int)
+        val_df["label"] = val_df["label"].astype(int)
+    else:
+        train_df["label"] = train_df["label"].astype(float)
+        val_df["label"] = val_df["label"].astype(float)
     
     train_dataset = Dataset.from_pandas(train_df)
     val_dataset = Dataset.from_pandas(val_df)
@@ -117,22 +125,33 @@ def initiate_model(configs: Union[MLM_Configs, Fine_Tuning_Configs], MLM=False):
     if MLM:
         model = AutoModelForMaskedLM.from_pretrained(configs.model_name)
     else:
-        model = AutoModelForSequenceClassification.from_pretrained(configs.model_name, num_labels=configs.num_labels)
+        model = AutoModelForSequenceClassification.from_pretrained(configs.model_name, num_labels=configs.num_labels, torch_dtype=torch.float32,)
 
     tokenizer = AutoTokenizer.from_pretrained(configs.model_name)
 
 
     if configs.training_type == 'lora':
+        name_lower = configs.model_name.lower()
+        if "deberta-v" in name_lower or "geberta" in name_lower:
+            target_modules = ["query_proj", "value_proj"]
+            bias = "none"
+        elif "modernbert" in name_lower or "moderngbert" in name_lower:
+            target_modules = ["Wqkv", "Wo"]
+            bias = "none"
+        else:
+            target_modules = ["query", "value"]
+            bias = "lora_only"
         lora_configs = LoraConfig(
                 task_type=TaskType.SEQ_CLS,
                 r=configs.lora_configs.r,
                 lora_alpha=configs.lora_configs.alpha,
-                target_modules=["query", "value"],
+                target_modules=target_modules,
                 lora_dropout=configs.lora_configs.dropout,
-                bias="lora_only",
+                bias=bias,
             )
         model = get_peft_model(model, lora_configs)
-    
+        model.enable_input_require_grads()
+        
        
 
     elif configs.training_type == 'head':

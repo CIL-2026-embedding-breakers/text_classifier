@@ -1,13 +1,47 @@
 import os
 import wandb
+import torch
 import numpy as np
 from os import PathLike
 from typing import Union
 from dataclasses import dataclass, asdict
 from transformers import PreTrainedModel, Trainer, TrainingArguments, DataCollatorWithPadding, DefaultDataCollator
+from transformers.trainer_utils import get_last_checkpoint
 from deep_learning.preprocessing.preprocessor import Preprocessor
 from deep_learning.code_configs import MLM_Configs, Fine_Tuning_Configs
-    
+
+
+class CustomTrainer(Trainer):
+    def __init__(self, *args, loss_type="ce", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.loss_type = loss_type
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits
+
+        if self.loss_type == "oll":
+            probs = torch.softmax(logits, dim=-1)
+            k = torch.arange(logits.shape[-1], device=logits.device).unsqueeze(0)
+            dist = (k - labels.unsqueeze(-1)).abs().float() ** 1.5
+            loss = (-torch.log(torch.clamp(1 - probs, min=1e-7)) * dist).sum(-1).mean()
+        elif self.loss_type == "emd":
+            probs = torch.softmax(logits, dim=-1)
+            target = torch.zeros_like(probs).scatter_(1, labels.unsqueeze(-1), 1.0)
+            loss = (probs.cumsum(-1) - target.cumsum(-1)).abs().sum(-1).mean()
+        elif self.loss_type == "soft":
+            sigma = 4.0
+            k = torch.arange(logits.shape[-1], device=logits.device).unsqueeze(0).float()
+            soft_target = torch.exp(-(k - labels.unsqueeze(-1).float()) ** 2 / (2 * sigma ** 2))
+            soft_target = soft_target / soft_target.sum(-1, keepdim=True)
+            log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+            loss = -(soft_target * log_probs).sum(-1).mean()
+        else:
+            loss = torch.nn.functional.cross_entropy(logits, labels)
+
+        return (loss, outputs) if return_outputs else loss
+
 
 class General_Trainer():
     def __init__(self, configs: Union[MLM_Configs, Fine_Tuning_Configs], model: PreTrainedModel, data_collator: DefaultDataCollator, 
@@ -20,9 +54,13 @@ class General_Trainer():
 
     def train(self, train_dataset, eval_dataset = None, output_dir="./results"):
         train_dataset = self.preprocessor(train_dataset)
-        
+
         if eval_dataset is not None:
             eval_dataset = self.preprocessor(eval_dataset)
+
+        ckpt_root = os.environ.get("CIL_CHECKPOINT_ROOT")
+        if ckpt_root:
+            output_dir = f"{ckpt_root}/{self.configs.run_name}"
 
         tc = self.configs.training_configs
         self.training_args = TrainingArguments(
@@ -37,32 +75,39 @@ class General_Trainer():
             lr_scheduler_type=tc.lr_scheduler_type,
             # --- saving / eval ---
             eval_strategy="steps",
-            eval_steps=1000,  
-            save_strategy="no",              # <-- don't save checkpoints
-            # save_total_limit=1,            # <-- not needed when not saving
-            load_best_model_at_end=False,    # <-- must be False when save_strategy="no"
-            # metric_for_best_model='score', # <-- only relevant with load_best_model_at_end
-            # greater_is_better=True,
+            eval_steps=1000,
+            save_strategy="steps",
+            save_steps=1000,
+            save_total_limit=2,
+            load_best_model_at_end=True,
+            metric_for_best_model="score",
+            greater_is_better=True,
+            gradient_checkpointing=getattr(self.configs, "training_type", "") in ("full", "lora"),
             # --- logging ---
             logging_strategy="steps",
             logging_steps=getattr(tc, "logging_steps", 50),
             logging_first_step=True,
             run_name=getattr(tc, "run_name", None),
             report_to=["wandb"],
-            bf16=True,
+            bf16=("deberta-v" not in self.configs.model_name) and ("geberta" not in self.configs.model_name.lower()),
+            optim="adamw_torch_fused",
             dataloader_num_workers=tc.dataloader_num_workers,
         )
 
-        self.trainer = Trainer(
+        is_mlm = isinstance(self.configs, MLM_Configs)
+        self.trainer = CustomTrainer(
             model=self.model,
             args=self.training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             data_collator=self.data_collator,
             processing_class=self.preprocessor.tokenizer,
-            compute_metrics=General_Trainer.compute_metrics_finetuning if isinstance(self.configs, Fine_Tuning_Configs) else General_Trainer.compute_metrics_mlm
+            compute_metrics=General_Trainer.compute_metrics_mlm if is_mlm else General_Trainer.compute_metrics_finetuning,
+            preprocess_logits_for_metrics=(lambda logits, labels: logits.argmax(dim=-1)) if is_mlm else None,
+            loss_type=os.environ.get("CIL_LOSS_TYPE", "ce") if not is_mlm else "ce",
         )
-        self.trainer.train()
+        last_ckpt = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
+        self.trainer.train(resume_from_checkpoint=last_ckpt)
 
         self.trainer.save_model(f"{os.environ.get('SAVE_MODEL_DIR')}/{self.configs.run_name}")  # Save the final model after training
 
@@ -93,7 +138,7 @@ class General_Trainer():
         Standard MLM metric: perplexity.
         """
         predictions, labels = eval_pred
-        predictions = np.argmax(predictions, axis=-1)
+        # predictions already argmax'd by preprocess_logits_for_metrics
         mask = labels != -100
         masked_labels = labels[mask]
         masked_predictions = predictions[mask]

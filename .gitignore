@@ -4,3 +4,15 @@ __pycache__/
 .ipynb_checkpoints/
 .vscode/
 logs
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+.hf_cache/
+wandb/
+logs/
+None/
+*.bin
+data/split/
+data/lang/
+data/splitlang_simple/
+data_analysis/models/

@@ -339,18 +339,8 @@ def sentiment_evaluator(cleaned_texts: list[str], labels: list[int]) -> dict[str
 # so it stays as a dedicated function rather than going through evaluate_ablations).
 # ---------------------------------------------------------------------------
 
-def _patch_fasttext_for_numpy2() -> None:
-    import types
-    import numpy as _np
-    import fasttext.FastText as _ft
-
-    shim = types.SimpleNamespace(**{k: getattr(_np, k) for k in dir(_np) if not k.startswith("__")})
-    shim.array = lambda obj, *a, **kw: _np.asarray(obj, *a) if not kw.get("copy", True) else _np.array(obj, *a, **kw)
-    _ft.np = shim
-    _ft.eprint = lambda *a, **kw: None
-
-
 def _load_fasttext_model(model_path: str):
+    from data_analysis.utils.language_detection import _patch_fasttext_for_numpy2
     _patch_fasttext_for_numpy2()
     import fasttext
     return fasttext.load_model(model_path)
