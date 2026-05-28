@@ -1,0 +1,16 @@
+Overall Accuracy: 0.6576
+Overall Score: 0.9061
+
+MAE per True Label:
+Label 0: MAE = 0.3560
+Label 1: MAE = 0.3779
+Label 2: MAE = 0.5118
+Label 3: MAE = 0.4272
+Label 4: MAE = 0.2034
+
+Accuracy per True Label:
+Label 0: Accuracy = 0.6852
+Label 1: Accuracy = 0.6475
+Label 2: Accuracy = 0.5347
+Label 3: Accuracy = 0.6028
+Label 4: Accuracy = 0.8186

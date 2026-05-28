@@ -124,48 +124,27 @@ class BaselineComparison:
         
         configs = [
             {
-                'name': 'baseline_lr_tfidf',
-                'type': 'bow_lr',
+                'name': 'baseline_xgboost',
+                'type': 'bow_xgb',
                 'ngram_range': [1, 2],
                 'max_features': 10000,
-                'C': 1.0,
-                'vectorizer_type': 'tfidf',
-                'solver': 'lbfgs',
-                'penalty': 'l2'
-            },
-            {
-                'name': 'baseline_lr_weighted',
-                'type': 'bow_lr_weighted',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'C': 1.0,
-                'vectorizer_type': 'tfidf',
-                'solver': 'lbfgs',
-                'penalty': 'l2'
-            },
-            {
-                'name': 'baseline_linear_regression',
-                'type': 'bow_linear_reg',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'vectorizer_type': 'tfidf',
-                'nearest_label': True
-            },
-            {
-                'name': 'baseline_naive_bayes',
-                'type': 'bow_nb',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'alpha': 1.0
-            },
-            {
-                'name': 'baseline_linear_svc',
-                'type': 'bow_svc',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'C': 1.0,
+                'max_depth': 6,
+                'n_estimators': 100,
+                'learning_rate': 0.1,
                 'vectorizer_type': 'tfidf'
             },
+            {
+                'name': 'baseline_random_forest',
+                'type': 'bow_rf',
+                'ngram_range': [1, 2],
+                'max_features': 10000,
+                'n_estimators': 100,
+                'max_depth': None,
+                'vectorizer_type': 'tfidf'
+            },
+
+
+
         ]
         
         train_texts = self.train_df[self.text_col].values
@@ -369,6 +348,8 @@ class BaselineComparison:
         
         return results
     
+
+    
     def run_comprehensive_analysis(self) -> Dict[str, Any]:
         """Run all baseline comparisons and return summary."""
         print("\n" + "="*70)
@@ -385,118 +366,4 @@ class BaselineComparison:
         }
         
         return all_results
-    
-    def compare_l1_regularization(self) -> List[Dict[str, Any]]:
-        """Compare L1 vs L2 regularization (sparsity enforcement)."""
-        print("\n" + "="*70)
-        print("COMPARING L1 vs L2 REGULARIZATION (Sparsity)")
-        print("="*70)
-        
-        configs = [
-            {
-                'name': 'regularization_l2_c1',
-                'type': 'bow_lr',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'C': 1.0,
-                'vectorizer_type': 'tfidf',
-                'solver': 'lbfgs',
-                'penalty': 'l2'
-            },
-            {
-                'name': 'regularization_l1_c1',
-                'type': 'bow_lr',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'C': 1.0,
-                'vectorizer_type': 'tfidf',
-                'solver': 'saga',
-                'penalty': 'l1'
-            },
-            {
-                'name': 'regularization_l2_c01',
-                'type': 'bow_lr',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'C': 0.1,
-                'vectorizer_type': 'tfidf',
-                'solver': 'lbfgs',
-                'penalty': 'l2'
-            },
-            {
-                'name': 'regularization_l1_c01',
-                'type': 'bow_lr',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'C': 0.1,
-                'vectorizer_type': 'tfidf',
-                'solver': 'saga',
-                'penalty': 'l1'
-            },
-        ]
-        
-        train_texts = self.train_df[self.text_col].values
-        train_labels = self.train_df[self.label_col].values
-        val_texts = self.val_df[self.text_col].values
-        val_labels = self.val_df[self.label_col].values
-        test_texts = self.test_df[self.text_col].values if self.test_df is not None else None
-        
-        runner = ExperimentRunner(str(self.output_dir / 'l1_regularization'))
-        results = runner.run_multiple_experiments(configs, train_texts, train_labels,
-                                                 val_texts, val_labels, test_texts)
-        runner.save_results()
-        
-        # Compute sparsity for L1 models
-        print("\nSparsity Analysis:")
-        for result in results:
-            model = result['model']
-            config_name = result['config']['name']
-            if hasattr(model, 'get_sparsity'):
-                sparsity = model.get_sparsity()
-                print(f"  {config_name}: {sparsity:.2f}% zero coefficients")
-        
-        return results
-    
-    def compare_lemmatization(self) -> List[Dict[str, Any]]:
-        """Compare BOW with and without lemmatization."""
-        print("\n" + "="*70)
-        print("COMPARING LEMMATIZATION IMPACT (Language-Aware)")
-        print("="*70)
-        
-        configs = [
-            {
-                'name': 'lemmatization_none',
-                'type': 'bow_lr',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'C': 1.0,
-                'vectorizer_type': 'tfidf',
-                'solver': 'lbfgs',
-                'penalty': 'l2',
-                'lemmatize': False
-            },
-            {
-                'name': 'lemmatization_enabled',
-                'type': 'bow_lr',
-                'ngram_range': [1, 2],
-                'max_features': 10000,
-                'C': 1.0,
-                'vectorizer_type': 'tfidf',
-                'solver': 'lbfgs',
-                'penalty': 'l2',
-                'lemmatize': True
-            },
-        ]
-        
-        train_texts = self.train_df[self.text_col].values
-        train_labels = self.train_df[self.label_col].values
-        val_texts = self.val_df[self.text_col].values
-        val_labels = self.val_df[self.label_col].values
-        test_texts = self.test_df[self.text_col].values if self.test_df is not None else None
-        
-        runner = ExperimentRunner(str(self.output_dir / 'lemmatization'))
-        results = runner.run_multiple_experiments(configs, train_texts, train_labels,
-                                                 val_texts, val_labels, test_texts)
-        runner.save_results()
-        
-        return results
+   
