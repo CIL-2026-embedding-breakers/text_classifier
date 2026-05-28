@@ -1,186 +1,125 @@
-# Text Classifier — CIL ETH Zürich
+# Text Classifier — CIL 2026
 
-> **Getting started guide** — cluster setup, environment configuration, and notebook workflow.
+Multilingual sentiment classification (5-class, EN+DE) on Amazon-style reviews.
+Team: Embedding_breakers. Score: `1 - MAE / 4`.
 
----
+## Layout
 
-## Cluster Paths
-
-| Resource | Path |
-|---|---|
-| Conda environment | `/cluster/courses/cil/envs/envs/text-classification` |
-| Data | `/cluster/courses/cil/text-classification/data/` |
-
-## Useful Links
-
-| Resource | URL |
-|---|---|
-| Cluster documentation | https://www.isg.inf.ethz.ch/Main/HelpClusterComputingStudentCluster |
-| Project Google Doc | https://docs.google.com/document/d/1JL8J60MP6A4DblW66prtFsrrRMduYGAZdayUqy5QahA/edit?tab=t.0 |
-| Kaggle competition | https://www.kaggle.com/t/7aafec306ca648acacee5c4fe633c0fb |
-| Jupyter Hub (GPU) | https://student-jupyter.inf.ethz.ch/hub/spawn |
-
----
-
-## 1 — Connect to the Cluster
-
-You can connect directly with:
-
-_Run on your local machine:_
-```bash
-$ ssh <eth-username>@student-cluster.inf.ethz.ch
 ```
-> Replace `<eth-username>` with your ETH username (e.g. `jdoe`).
-
-You will be prompted for your ETH password each time. To avoid this, follow the steps below to set up SSH key authentication.
-
----
-
-### 1.1 — Check for an existing SSH key
-
-_Run on your local machine:_
-```bash
-$ ls ~/.ssh/id_ed25519.pub
+deep_learning/      transformer fine-tuning (trainer, preprocessor, configs)
+baselines/          TF-IDF + LR / SVC / NB baselines
+data_analysis/      EDA notebooks + lingua-py language splitter
+scripts/            SLURM launchers + result-collection scripts
+data/               train.csv, test.csv (mixed EN/DE)
+configs/, sweeps.py legacy W&B sweep entry (kept; not used in final results)
+instructions/       course PDFs
 ```
 
-- If the file **exists** → skip to [1.3](#13--copy-your-key-to-the-cluster).
-- If you get `No such file or directory` → continue to [1.2](#12--generate-an-ssh-key).
+## Environment
 
----
+Local: `uv sync` then `uv run python ...`.
 
-### 1.2 — Generate an SSH key
+On the ETH student cluster, the launch scripts assume the project's conda env
+(or `uv`) is already on `$PATH`. We use `uv run` inside `scripts/launch_run.sh`.
 
-_Run on your local machine:_
-```bash
-$ ssh-keygen -t ed25519 -C "key-ethz-student-cluster"
+## Cluster connection (one-time)
+
+```
+ssh <eth-username>@student-cluster.inf.ethz.ch
 ```
 
-When prompted, press **Enter** to accept the default save path (`~/.ssh/id_ed25519`). You may optionally set a passphrase.
+Optional alias in `~/.ssh/config`:
 
----
-
-### 1.3 — Copy your key to the cluster
-
-_Run on your local machine:_
-```bash
-$ ssh-copy-id <eth-username>@student-cluster.inf.ethz.ch
 ```
-> Replace `<eth-username>` with your ETH username.
-
-You will be asked for your ETH password **one last time** — after this step, no password is needed.
-
----
-
-### 1.4 — (Optional) Add a connection shortcut
-
-To connect with a short alias instead of the full hostname, run the following on your local machine:
-
-_Run on your local machine:_
-```bash
-$ cat >> ~/.ssh/config << 'EOF'
-
 Host eth-student-cluster
     HostName student-cluster.inf.ethz.ch
     User <eth-username>
     IdentityFile ~/.ssh/id_ed25519
-EOF
-```
-> Replace `<eth-username>` on the `User` line with your ETH username.
-
-You can then connect with:
-
-_Run on your local machine:_
-```bash
-$ ssh eth-student-cluster
 ```
 
----
+W&B login: `wandb login` (paste API key from <https://wandb.ai/authorize>).
 
-## 2 — Configure Conda on the Cluster
+## Reproducing the results
 
-### 2.1 — Add conda init to `~/.bashrc`
+All runs are launched from the repo root.
 
-Run the following command **once** on the cluster to automatically append the conda initialization block:
+### 1. Data preparation (run once)
 
-_Run on the cluster:_
-```bash
-$ cat >> ~/.bashrc << 'EOF'
-
-# >>> conda initialize >>>
-__conda_setup="$('/cluster/courses/cil/envs/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/cluster/courses/cil/envs/etc/profile.d/conda.sh" ]; then
-        . "/cluster/courses/cil/envs/etc/profile.d/conda.sh"
-    else
-        export PATH="/cluster/courses/cil/envs/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
-EOF
+```
+python scripts/split_train_val.py        # 90/10 split, seed=42 -> data/split/
+python scripts/run_language_detection.py # lingua-py split    -> data/lang/{EN,DE,UNCERTAIN}/
 ```
 
----
+### 2. Per-language model ablation (5 runs)
 
-### 2.2 — Reload your shell
-
-_Run on the cluster:_
-```bash
-$ source ~/.bashrc
+```
+bash scripts/launch_ablation.sh
 ```
 
----
+Submits one multilingual baseline + 4 specialists (xlmr_en, xlmr_de, deberta_en,
+gbert_de) under a single W&B group. All 5 runs use LR=5e-4, epochs=5, loss=ce
+(pinned inside the script).
 
-### 2.3 — (Optional) Set the default conda environment
+Collect results from the saved `validation_results.csv` files:
 
-_Run on the cluster:_
-```bash
-$ conda config --set default_activation_env /cluster/courses/cil/envs/envs/text-classification
+```
+python scripts/per_language_ablation.py
 ```
 
----
+### 3. Loss-function ablation (4 runs)
 
-### 2.4 — Activate the environment
-
-_Run on the cluster:_
-```bash
-$ conda activate /cluster/courses/cil/envs/envs/text-classification
+```
+for loss in ce oll emd soft; do
+  sbatch --export=ALL,CIL_LOSS_TYPE=$loss,CIL_RUN_TAG=loss_$loss ./scripts/launch_run.sh
+done
 ```
 
----
+Collect from W&B by tag:
 
-## 3 — Run Notebooks via VS Code
-
-> This workflow runs Jupyter directly on the cluster — no GPU is allocated.  
-> For GPU-enabled sessions, use [Jupyter Hub](https://student-jupyter.inf.ethz.ch/hub/spawn) instead.
-
-**Step 1 — Start a Jupyter server on the cluster**
-
-_Run on the cluster:_
-```bash
-$ jupyter lab --no-browser --port=8888
+```
+python scripts/loss_results_from_wandb.py loss_ce loss_oll loss_emd loss_soft
 ```
 
-Copy the URL displayed in the terminal (e.g. `http://localhost:8888/?token=...`). You will need it in Step 5.
+### 4. Single custom run
 
-**Step 2 — Connect VS Code to the cluster**
+Everything is driven by environment variables, e.g.:
 
-In VS Code (local), connect via the **Remote – SSH** extension using `eth-student-cluster` (or your full hostname).
+```
+sbatch --export=ALL,CIL_MODEL_NAME=deepset/gbert-large,CIL_TRAINING_TYPE=lora,\
+CIL_LR=3e-4,CIL_EPOCHS=4,CIL_RUN_TAG=gbert_large ./scripts/launch_run.sh
+```
 
-**Step 3 — Open your notebook**
+## Environment variables
 
-Open the target `.ipynb` file in VS Code.
+Read by `run_dl.py` and the trainer. All have defaults — only set the ones you
+want to override.
 
-**Step 4 — Select a kernel**
+| Variable             | Default                  | Meaning                                          |
+|----------------------|--------------------------|--------------------------------------------------|
+| `CIL_JOB_TYPE`       | `fine_tuning`            | `fine_tuning` or `mlm`                           |
+| `CIL_MODEL_NAME`     | `xlm-roberta-base`       | any HuggingFace model id                         |
+| `CIL_TRAINING_TYPE`  | `lora`                   | `lora`, `full`, or `head`                        |
+| `CIL_LR`             | `5e-4`                   | learning rate                                    |
+| `CIL_EPOCHS`         | `5`                      | epochs                                           |
+| `CIL_LOSS_TYPE`      | `ce`                     | `ce`, `oll`, `emd`, `soft`                       |
+| `CIL_PREPROC`        | `none`                   | `none`, `light`, `medium`, `heavy`               |
+| `CIL_DELIMITER_MODE` | `plain_concat`           | `plain_concat` or `with_tags`                    |
+| `CIL_DATA_PATH`      | `./data/split/`          | dir containing `train.csv`, `val.csv`, `test.csv`|
+| `CIL_RUN_TAG`        | `multilingual`           | string appended to the W&B run name              |
+| `CIL_WANDB_GROUP`    | unset                    | optional W&B group                               |
+| `CIL_CHECKPOINT_ROOT`| `/work/scratch/$USER/...`| where the HF Trainer writes checkpoints          |
+| `SAVE_MODEL_DIR`     | `$SLURM_SUBMIT_DIR/final_models` | where the final model is saved           |
 
-Click **"Select Kernel"** in the top-right corner. Install the **Jupyter** and **Python** extensions if prompted.
+## Forcing a fresh run
 
-**Step 5 — Connect to the Jupyter server**
+The trainer auto-resumes from the latest checkpoint in `CIL_CHECKPOINT_ROOT/<run_name>/`.
+To restart from scratch, delete that directory before launching:
 
-Choose **"Existing Jupyter Server"** and paste the URL from Step 1.
+```
+rm -rf /work/scratch/$USER/text_classifier_cache/checkpoints/<run_name>
+```
 
-**Step 6 — Choose the environment**
+## Useful links
 
-Select the **Python 3** kernel corresponding to the project's conda environment.
+- Cluster docs: <https://www.isg.inf.ethz.ch/Main/HelpClusterComputingStudentCluster>
+- Kaggle: <https://www.kaggle.com/t/7aafec306ca648acacee5c4fe633c0fb>

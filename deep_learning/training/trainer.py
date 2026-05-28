@@ -89,7 +89,7 @@ class General_Trainer():
             logging_first_step=True,
             run_name=getattr(tc, "run_name", None),
             report_to=["wandb"],
-            bf16=("deberta-v" not in self.configs.model_name) and ("geberta" not in self.configs.model_name.lower()),
+            bf16=("deberta-v" not in self.configs.model_name.lower()) and ("geberta" not in self.configs.model_name.lower()),
             optim="adamw_torch_fused",
             dataloader_num_workers=tc.dataloader_num_workers,
         )

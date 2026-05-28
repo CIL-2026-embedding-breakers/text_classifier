@@ -1,11 +1,12 @@
 """Download deepset/gbert-large to scratch and patch the missing model_type."""
 
 import json
+import os
 from pathlib import Path
 from huggingface_hub import snapshot_download
 
 REPO_ID = "deepset/gbert-large"
-TARGET = Path("/work/scratch/sgodey/text_classifier_cache/gbert-large")
+TARGET = Path(f"/work/scratch/{os.environ['USER']}/text_classifier_cache/gbert-large")
 
 TARGET.mkdir(parents=True, exist_ok=True)
 snapshot_download(repo_id=REPO_ID, local_dir=str(TARGET))
