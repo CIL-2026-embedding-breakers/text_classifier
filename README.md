@@ -68,6 +68,40 @@ text_classifier/
 | Cluster conda env | `/cluster/courses/cil/envs/envs/text-classification` |
 | Cluster shared data | `/cluster/courses/cil/text-classification/data/` |
 
+## Environment setup
+
+The project uses `uv` for dependency management; `uv.lock` is committed, so
+versions are pinned.
+
+Install `uv` (one-time, local machine or cluster):
+
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+From the repo root, create the venv and install all dependencies:
+
+```
+uv sync
+```
+
+This creates `.venv/`. To run any Python entry point:
+
+```
+uv run python run_dl.py
+```
+
+or activate the venv directly:
+
+```
+source .venv/bin/activate
+python run_dl.py
+```
+
+The SLURM launcher `scripts/launch_run.sh` already wraps the training entry
+point with `uv run`, so once `uv sync` has succeeded on the cluster every
+`sbatch` command below works as-is.
+
 ## Cluster connection
 
 ```
