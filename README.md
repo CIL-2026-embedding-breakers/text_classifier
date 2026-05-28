@@ -3,26 +3,72 @@
 Multilingual sentiment classification (5-class, EN+DE) on Amazon-style reviews.
 Team: Embedding_breakers. Score: `1 - MAE / 4`.
 
-## Layout
+---
+
+# Part 1 — Repository
+
+## Directory tree
 
 ```
-deep_learning/      transformer fine-tuning (trainer, preprocessor, configs)
-baselines/          TF-IDF + LR / SVC / NB baselines
-data_analysis/      EDA notebooks + lingua-py language splitter
-scripts/            SLURM launchers + result-collection scripts
-data/               train.csv, test.csv (mixed EN/DE)
-configs/, sweeps.py legacy W&B sweep entry (kept; not used in final results)
-instructions/       course PDFs
+text_classifier/
+├── run_dl.py                         # main entry point (env-var driven)
+├── sweeps.py                         # legacy W&B sweep entry (kept, not used for final results)
+├── pyproject.toml                    # uv project
+│
+├── deep_learning/
+│   ├── code_configs.py               # dataclasses: Fine_Tuning_Configs, LoRa_Configs, ...
+│   ├── preprocessing/
+│   │   ├── preprocessor.py           # text cleaning, title/review splitting
+│   │   └── preprocessing_sanity_check.ipynb
+│   ├── training/
+│   │   ├── trainer.py                # CustomTrainer with CE / OLL / EMD / SOFT losses
+│   │   └── training_pipeline.py      # LoRA / full / head fine-tuning pipeline
+│   └── analysis/
+│       └── validation_analysis.py    # per-label MAE + big-mistakes CSV
+│
+├── baselines/
+│   ├── simplified_baselines.ipynb    # all baseline numbers in the paper (Tables 1, 2, 3)
+│   └── src/                          # TF-IDF + LR/SVC/NB models, preprocessing, lemmatizer
+│
+├── data_analysis/
+│   ├── data_visualisation.ipynb
+│   ├── data_visualisation_negation.ipynb
+│   ├── data_visualisation_of_duplicates.ipynb
+│   └── utils/
+│       ├── language_detection.py     # lingua-py EN/DE/UNCERTAIN splitter
+│       ├── text_analysis.py
+│       ├── text_preprocessing.py
+│       └── label_distribution.py
+│
+├── scripts/
+│   ├── launch_run.sh                 # SLURM wrapper for one run of run_dl.py
+│   ├── launch_ablation.sh            # convenience: per-language 5-run ablation
+│   ├── split_train_val.py            # 90/10 split, seed=42
+│   ├── run_language_detection.py     # lingua-py EN/DE/UNCERTAIN split
+│   ├── setup_gbert_large.py          # download gbert-large to scratch + patch config
+│   ├── per_language_ablation.py      # collect per-language ablation from local CSVs
+│   ├── loss_results_from_wandb.py    # collect loss ablation results from W&B by tag
+│   ├── launch_sweeps.sh              # legacy sweep launcher
+│   └── sweep_agent_batch.sh          # legacy sweep agent
+│
+├── configs/                          # legacy W&B sweep YAMLs (not used for final results)
+├── data/                             # train.csv, test.csv (mixed EN/DE)
+├── analysis.ipynb                    # corpus EDA notebook
+├── text_classification_intro.ipynb   # course-provided starter (untouched)
+└── instructions/                     # course PDFs
 ```
 
-## Environment
+## Resources
 
-Local: `uv sync` then `uv run python ...`.
+| Resource | Location |
+|---|---|
+| Cluster docs | <https://www.isg.inf.ethz.ch/Main/HelpClusterComputingStudentCluster> |
+| Kaggle competition | <https://www.kaggle.com/t/7aafec306ca648acacee5c4fe633c0fb> |
+| W&B project | `cil-project` |
+| Cluster conda env | `/cluster/courses/cil/envs/envs/text-classification` |
+| Cluster shared data | `/cluster/courses/cil/text-classification/data/` |
 
-On the ETH student cluster, the launch scripts assume the project's conda env
-(or `uv`) is already on `$PATH`. We use `uv run` inside `scripts/launch_run.sh`.
-
-## Cluster connection (one-time)
+## Cluster connection
 
 ```
 ssh <eth-username>@student-cluster.inf.ethz.ch
@@ -37,89 +83,166 @@ Host eth-student-cluster
     IdentityFile ~/.ssh/id_ed25519
 ```
 
-W&B login: `wandb login` (paste API key from <https://wandb.ai/authorize>).
-
-## Reproducing the results
-
-All runs are launched from the repo root.
-
-### 1. Data preparation (run once)
-
-```
-python scripts/split_train_val.py        # 90/10 split, seed=42 -> data/split/
-python scripts/run_language_detection.py # lingua-py split    -> data/lang/{EN,DE,UNCERTAIN}/
-```
-
-### 2. Per-language model ablation (5 runs)
-
-```
-bash scripts/launch_ablation.sh
-```
-
-Submits one multilingual baseline + 4 specialists (xlmr_en, xlmr_de, deberta_en,
-gbert_de) under a single W&B group. All 5 runs use LR=5e-4, epochs=5, loss=ce
-(pinned inside the script).
-
-Collect results from the saved `validation_results.csv` files:
-
-```
-python scripts/per_language_ablation.py
-```
-
-### 3. Loss-function ablation (4 runs)
-
-```
-for loss in ce oll emd soft; do
-  sbatch --export=ALL,CIL_LOSS_TYPE=$loss,CIL_RUN_TAG=loss_$loss ./scripts/launch_run.sh
-done
-```
-
-Collect from W&B by tag:
-
-```
-python scripts/loss_results_from_wandb.py loss_ce loss_oll loss_emd loss_soft
-```
-
-### 4. Single custom run
-
-Everything is driven by environment variables, e.g.:
-
-```
-sbatch --export=ALL,CIL_MODEL_NAME=deepset/gbert-large,CIL_TRAINING_TYPE=lora,\
-CIL_LR=3e-4,CIL_EPOCHS=4,CIL_RUN_TAG=gbert_large ./scripts/launch_run.sh
-```
+W&B login (once on the cluster): `wandb login`.
 
 ## Environment variables
 
-Read by `run_dl.py` and the trainer. All have defaults — only set the ones you
-want to override.
+`run_dl.py` reads these. Defaults are shown; only set the ones you want to
+override when launching a run.
 
-| Variable             | Default                  | Meaning                                          |
-|----------------------|--------------------------|--------------------------------------------------|
-| `CIL_JOB_TYPE`       | `fine_tuning`            | `fine_tuning` or `mlm`                           |
-| `CIL_MODEL_NAME`     | `xlm-roberta-base`       | any HuggingFace model id                         |
-| `CIL_TRAINING_TYPE`  | `lora`                   | `lora`, `full`, or `head`                        |
-| `CIL_LR`             | `5e-4`                   | learning rate                                    |
-| `CIL_EPOCHS`         | `5`                      | epochs                                           |
-| `CIL_LOSS_TYPE`      | `ce`                     | `ce`, `oll`, `emd`, `soft`                       |
-| `CIL_PREPROC`        | `none`                   | `none`, `light`, `medium`, `heavy`               |
-| `CIL_DELIMITER_MODE` | `plain_concat`           | `plain_concat` or `with_tags`                    |
-| `CIL_DATA_PATH`      | `./data/split/`          | dir containing `train.csv`, `val.csv`, `test.csv`|
-| `CIL_RUN_TAG`        | `multilingual`           | string appended to the W&B run name              |
-| `CIL_WANDB_GROUP`    | unset                    | optional W&B group                               |
-| `CIL_CHECKPOINT_ROOT`| `/work/scratch/$USER/...`| where the HF Trainer writes checkpoints          |
-| `SAVE_MODEL_DIR`     | `$SLURM_SUBMIT_DIR/final_models` | where the final model is saved           |
+| Variable | Default | Meaning |
+|---|---|---|
+| `CIL_JOB_TYPE` | `fine_tuning` | `fine_tuning` or `mlm` |
+| `CIL_MODEL_NAME` | `xlm-roberta-base` | HuggingFace model id |
+| `CIL_TRAINING_TYPE` | `lora` | `lora`, `full`, or `head` |
+| `CIL_LR` | `5e-4` | learning rate |
+| `CIL_EPOCHS` | `5` | epochs |
+| `CIL_LOSS_TYPE` | `ce` | `ce`, `oll`, `emd`, `soft` |
+| `CIL_PREPROC` | `none` | `none`, `light`, `medium`, `heavy` |
+| `CIL_DELIMITER_MODE` | `plain_concat` | `plain_concat` or `with_tags` |
+| `CIL_DATA_PATH` | `./data/split/` | dir with `train.csv`, `val.csv`, `test.csv` |
+| `CIL_RUN_TAG` | `multilingual` | string appended to the W&B run name |
+| `CIL_WANDB_GROUP` | unset | optional W&B group |
+| `CIL_CHECKPOINT_ROOT` | `/work/scratch/$USER/text_classifier_cache/checkpoints` | Trainer checkpoints |
+| `SAVE_MODEL_DIR` | `$SLURM_SUBMIT_DIR/final_models` | final model location |
 
-## Forcing a fresh run
-
-The trainer auto-resumes from the latest checkpoint in `CIL_CHECKPOINT_ROOT/<run_name>/`.
-To restart from scratch, delete that directory before launching:
+A run resumes from its checkpoint dir automatically. To start fresh, delete it:
 
 ```
 rm -rf /work/scratch/$USER/text_classifier_cache/checkpoints/<run_name>
 ```
 
-## Useful links
+A few knobs are not exposed as env vars and must be edited in code:
+- `input_format` (`review_only` vs `title_plus_review`) → `run_dl.py:41`
+- LoRA `r`, `alpha`, `dropout` → `deep_learning/code_configs.py:LoRa_Configs`
 
-- Cluster docs: <https://www.isg.inf.ethz.ch/Main/HelpClusterComputingStudentCluster>
-- Kaggle: <https://www.kaggle.com/t/7aafec306ca648acacee5c4fe633c0fb>
+---
+
+# Part 2 — Reproducing the paper
+
+Each block corresponds to a table in the paper. Runs inside a block are
+independent and can be assigned to different teammates.
+
+## Data preparation (run once, before any training)
+
+```
+python scripts/split_train_val.py
+python scripts/run_language_detection.py
+```
+
+This produces `data/split/{train,val,test}.csv` (seed=42, 90/10) and
+`data/lang/{EN,DE,UNCERTAIN}/{train,val,test}.csv` (lingua-py, threshold 0.63).
+
+## Baselines — Tables 1, 2, 3
+
+All baseline numbers (BoW/TF-IDF + logistic regression, naive Bayes, SVC,
+XGBoost, random forest, GloVe, fastText; feature-extraction comparison;
+per-language comparison) come from one notebook:
+
+```
+jupyter nbconvert --execute --to notebook baselines/simplified_baselines.ipynb
+```
+
+No SLURM needed.
+
+## Preprocessing ablation — Table 4
+
+XLM-RoBERTa base + LoRA, learning rate `5e-5`. Nine independent runs.
+
+**Caveat:** `input_format` is hardcoded in `run_dl.py:41`. Before launching the
+"Review only" runs, edit that line to `input_format="review_only"`. For all
+other runs, leave it as `input_format="title_plus_review"`.
+
+Review-only runs (set `input_format="review_only"` first):
+
+```
+sbatch --export=ALL,CIL_LR=5e-5,CIL_PREPROC=none,CIL_RUN_TAG=prep_revonly_none     ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LR=5e-5,CIL_PREPROC=light,CIL_RUN_TAG=prep_revonly_light   ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LR=5e-5,CIL_PREPROC=medium,CIL_RUN_TAG=prep_revonly_medium ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LR=5e-5,CIL_PREPROC=heavy,CIL_RUN_TAG=prep_revonly_heavy   ./scripts/launch_run.sh
+```
+
+Title+review with delimiters (set `input_format="title_plus_review"`):
+
+```
+sbatch --export=ALL,CIL_LR=5e-5,CIL_DELIMITER_MODE=with_tags,CIL_PREPROC=none,CIL_RUN_TAG=prep_tags_none     ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LR=5e-5,CIL_DELIMITER_MODE=with_tags,CIL_PREPROC=light,CIL_RUN_TAG=prep_tags_light   ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LR=5e-5,CIL_DELIMITER_MODE=with_tags,CIL_PREPROC=medium,CIL_RUN_TAG=prep_tags_medium ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LR=5e-5,CIL_DELIMITER_MODE=with_tags,CIL_PREPROC=heavy,CIL_RUN_TAG=prep_tags_heavy   ./scripts/launch_run.sh
+```
+
+Title+review plain concat (set `input_format="title_plus_review"`):
+
+```
+sbatch --export=ALL,CIL_LR=5e-5,CIL_DELIMITER_MODE=plain_concat,CIL_PREPROC=none,CIL_RUN_TAG=prep_concat_none ./scripts/launch_run.sh
+```
+
+Results: read `eval/score` per run on the W&B project, or open
+`fine_tuning/<run_name>/validation_metrics.txt` written by each job.
+
+## Per-language specialisation — Table 5
+
+XLM-RoBERTa base + LoRA, LR `5e-4`, 5 epochs, CE loss. Five independent runs.
+
+```
+sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/split/,CIL_RUN_TAG=multilingual        ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/lang/EN/,CIL_RUN_TAG=xlmr_en           ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/lang/DE/,CIL_RUN_TAG=xlmr_de           ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_MODEL_NAME=microsoft/deberta-v3-base,CIL_DATA_PATH=./data/lang/EN/,CIL_RUN_TAG=deberta_en ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_MODEL_NAME=deepset/gbert-base,CIL_DATA_PATH=./data/lang/DE/,CIL_RUN_TAG=gbert_de          ./scripts/launch_run.sh
+```
+
+All five at once (puts them in one W&B group):
+
+```
+bash scripts/launch_ablation.sh
+```
+
+Collect:
+
+```
+python scripts/per_language_ablation.py
+```
+
+## Loss-function ablation — Table 6
+
+XLM-RoBERTa base + LoRA, multilingual data. Four independent runs.
+
+```
+sbatch --export=ALL,CIL_LOSS_TYPE=ce,CIL_RUN_TAG=loss_ce     ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LOSS_TYPE=oll,CIL_RUN_TAG=loss_oll   ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LOSS_TYPE=emd,CIL_RUN_TAG=loss_emd   ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_LOSS_TYPE=soft,CIL_RUN_TAG=loss_soft ./scripts/launch_run.sh
+```
+
+Collect from W&B (one tag at a time gives a per-loss table):
+
+```
+python scripts/loss_results_from_wandb.py loss_ce
+python scripts/loss_results_from_wandb.py loss_oll
+python scripts/loss_results_from_wandb.py loss_emd
+python scripts/loss_results_from_wandb.py loss_soft
+```
+
+## LoRA vs full fine-tuning — Table 7
+
+XLM-RoBERTa base, multilingual data. Two independent runs.
+
+```
+sbatch --export=ALL,CIL_TRAINING_TYPE=lora,CIL_RUN_TAG=lora_vs_full_lora ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_TRAINING_TYPE=full,CIL_RUN_TAG=lora_vs_full_full ./scripts/launch_run.sh
+```
+
+The full run uses the batch-size override hardcoded in `run_dl.py:71-74`
+(per-device batch 8, grad accumulation 8).
+
+## XLM-RoBERTa scaling — Table 8 / Figure (scaling)
+
+LoRA fine-tuning across the XLM-R family, multilingual data. Three independent
+runs. The XL model needs a larger GPU; submit it on a high-memory partition.
+
+```
+sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_RUN_TAG=scale_base       ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-large,CIL_RUN_TAG=scale_large     ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_MODEL_NAME=facebook/xlm-roberta-xl,CIL_RUN_TAG=scale_xl  ./scripts/launch_run.sh
+```
