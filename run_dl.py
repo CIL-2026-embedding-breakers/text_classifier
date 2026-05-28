@@ -34,6 +34,11 @@ def get_run_config():
         eval_batch_size=int(os.environ["CIL_EVAL_BATCH_SIZE"]) if "CIL_EVAL_BATCH_SIZE" in os.environ else None,
         grad_accum=int(os.environ["CIL_GRAD_ACCUM"]) if "CIL_GRAD_ACCUM" in os.environ else None,
 
+        # Optional LoRA hyperparameter overrides (None -> keep LoRa_Configs defaults)
+        lora_r=int(os.environ["CIL_LORA_R"]) if "CIL_LORA_R" in os.environ else None,
+        lora_alpha=int(os.environ["CIL_LORA_ALPHA"]) if "CIL_LORA_ALPHA" in os.environ else None,
+        lora_dropout=float(os.environ["CIL_LORA_DROPOUT"]) if "CIL_LORA_DROPOUT" in os.environ else None,
+
         # Data / task-specific
         data_path=os.environ.get("CIL_DATA_PATH", "./data/split/"),
         external_val_split=True,
@@ -57,7 +62,14 @@ def get_run_config():
 def build_default_configs(cfg):
     # LoRA config (only if training_type == "lora")
     if cfg.training_type == "lora":
-        lora_cfg = LoRa_Configs()
+        lora_kwargs = {}
+        if cfg.lora_r is not None:
+            lora_kwargs["r"] = cfg.lora_r
+        if cfg.lora_alpha is not None:
+            lora_kwargs["alpha"] = cfg.lora_alpha
+        if cfg.lora_dropout is not None:
+            lora_kwargs["dropout"] = cfg.lora_dropout
+        lora_cfg = LoRa_Configs(**lora_kwargs)
     else:
         lora_cfg = None
 
