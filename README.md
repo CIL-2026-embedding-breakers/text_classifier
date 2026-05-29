@@ -434,3 +434,24 @@ Purpose: [Asked Claude code to help with the implementation of wandb sweeps]
 Tool used: [Claude Sonnet 4.6]
 Files affected: []
 Purpose: [Asked Claude what combination of hyper parameters made sense for LoRa and different sizes of XLM-Roberta (conducted the experiment myself, just asked for initial values that made sense)]
+
+## Monolingual models (research speedup):
+Tool used: [Claude]
+Files affected: [run_dl.py, deep_learning/training/training_pipeline.py]
+Purpose: [
+We used Claude to speed up the research phase around the monolingual models. We had decided to test whether language-specific backbones could beat the multilingual XLM-R, and asked Claude to help us quickly identify suitable monolingual checkpoints (DeBERTa-v3 / gBERT at base scale, DeBERTa-v2-XL / geBERTa-XL at XL scale) and to wire them into our existing fine-tuning pipeline (e.g. selecting the right LoRA target modules for the DeBERTa-v2 architecture). This let us iterate on the per-language and XL-transfer experiments faster instead of digging through model docs ourselves. The choice of experiments, the runs, and the interpretation of the results are our own.
+]
+
+## Data analysis plots:
+Tool used: [Claude code]
+Files affected: [data_analysis/utils/label_distribution.py, data_analysis/utils/text_analysis.py, data_analysis notebooks]
+Purpose: [
+For the data-analysis notebooks we used Claude to avoid spending time on plotting boilerplate. We had already decided which statistics and figures we wanted (label distribution, length distributions per language/label, distinctive vocabulary, special-token rates, cleaning-rule diagnostics) and asked Claude for a specific formatting / a specific way of presenting them (colors, layout, summary tables). The analyses themselves, what to look at, and the conclusions drawn from the plots are ours.
+]
+
+## Configurable runs:
+Tool used: [Claude code]
+Files affected: [run_dl.py, scripts/launch_run.sh, scripts/launch_ablation.sh]
+Purpose: [
+We asked Claude to help make our configuration usable from the command line. The hyperparameters were hardcoded as code defaults; we had Claude add optional overrides (environment variables read by run_dl.py — e.g. CIL_MODEL_NAME, CIL_LR, CIL_PREPROC, CIL_LOSS_TYPE, and the batch-size knobs) so that, once we noticed a value needed changing across runs, we could just change the launch command instead of editing the code. The previous behavior is preserved: when no override is given, the original hardcoded defaults are used exactly as before.
+]
