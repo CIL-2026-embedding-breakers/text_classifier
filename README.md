@@ -414,6 +414,17 @@ For the rest of the baselines, use the best performing objective
 “
 I later added Glove and fasttext and asked Claude for an implementation of a vectorizer, all code in the baseline folder has been checked and understood]
 
+## Preprocessing:
+Tool used: [ChatGPT]
+Files affected: [deep_learning/preprocessing/preprocessor.py, preprocessing notebooks / sanity checks]
+Purpose: [
+We used AI assistance to speed up the implementation and iteration of the preprocessing pipeline that we had already designed conceptually. The main ideas, ablations, and hypotheses were defined by us beforehand: compare review_only vs title_plus_review, compare plain concatenation vs explicit delimiters, and evaluate several normalization strengths (none, light, medium, heavy).
+
+We asked the AI tools to help implement these preprocessing variants in code, including title/review splitting, URL replacement, punctuation normalization, emoji removal, lowercasing, and the corresponding configuration options needed to run systematic experiments. We also used AI assistance to help structure sanity-check notebooks and verify that each preprocessing level produced the expected transformed text.
+
+All preprocessing code, configuration changes, and experiment logic were checked, run, and understood by us. The experimental design, interpretation of the results, and the conclusions reported in the paper are our own.
+]
+
 ## Wandb:
 Tool used: [Claude code]
 Files affected: [scripts/launch_sweeps.sh sweeps.py]
