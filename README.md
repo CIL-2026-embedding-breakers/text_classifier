@@ -283,3 +283,42 @@ sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_RUN_TAG=scale_base      
 sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-large,CIL_RUN_TAG=scale_large     ./scripts/launch_run.sh
 sbatch --export=ALL,CIL_MODEL_NAME=facebook/xlm-roberta-xl,CIL_RUN_TAG=scale_xl  ./scripts/launch_run.sh
 ```
+
+
+# AI use
+
+
+## Baselines:
+Asked Claude code to implement the baselines I had thought about, gave Claude the following 
+“In order to have a well constructed project I think we should compute robust baselines with basic methods in order to get intuitions about what are the things a more complex model would help on.
+	Among the things to look at:
+* What are the limitations of the BOW approach. Why does it fail.
+* Look at how informative/noisy the title and text samples are 
+* See if it helps to have a specialized model per language 
+* See if classification is the way to go or we should implement a loss that accounts for the regression aspect of the loss
+* See how some basic preprocessing (lowercasing, removing spelling mistakes, …) can help on our task.
+* See the performance assess the performance of bigger models in a  non-finetuned setting in order to assess the potential improvement when moving to deeper models 
+For all these tasks I think we should compute the resulting metrics as well as perform a quick data analysis of the results in order to understand why an approach can help/hinder our task.
+
+Here is how I see this part:
+
+1. Figure out if classification or regression (or some other metric) is better
+Compute logistic regression vs linear regression vs weighted logistics regression  with small parameter sweep and compare
+Look at the failure modes and guess if DL would help
+For the rest of the baselines, use the best performing objective
+
+2. Figure the impact of the n gram by looking at the evolution of performance when we increase n.
+3. Look at ensemble of  language specific BOW model vs one multilanguage BOW model (simple parameter sweep but the result should be pretty clear)
+			For the future use the best performing approach
+
+3. See the impact of preprocessing. Set up a preprocessing pipeline (many of them online) and see the impact on performance. It would be good to analyse the results and compare them.
+
+1. See the difference between title only and title + text.
+“
+I later added Glove and fasttext and asked Claude for an implementation of a vectorizer
+
+## Wandb:
+Asked Claude code to help with the implementation of wandb sweeps 
+
+## Trainer:
+Asked Claude what combination of hyper parameters made sense for LoRa and different sizes of XLM-Roberta (conducted the experiment myself, just asked for initial values that made sense)
