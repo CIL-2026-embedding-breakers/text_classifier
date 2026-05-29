@@ -686,6 +686,14 @@ wheels = [
 ]
 
 [[package]]
+name = "de-core-news-sm"
+version = "3.8.0"
+source = { url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_sm-3.8.0/de_core_news_sm-3.8.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_sm-3.8.0/de_core_news_sm-3.8.0-py3-none-any.whl", hash = "sha256:fec69fec52b1780f2d269d5af7582a5e28028738bd3190532459aeb473bfa3e7" },
+]
+
+[[package]]
 name = "debugpy"
 version = "1.8.20"
 source = { registry = "https://pypi.org/simple" }
@@ -749,6 +757,14 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/1d/e4/13cd7faa3dc7ed0f97884e5fc9b237460c4a28babc58f09259e78ed11205/emosent-py-0.1.7.tar.gz", hash = "sha256:dfaf0a84ddb396b9bc1f739005bff1ea8b125f610f811b9b54d86cf0f6486475", size = 31875, upload-time = "2023-07-06T12:09:44.065Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a6/87/28534f58608892f540117ca7158512167598216d0b82963e790a98e8bd50/emosent_py-0.1.7-py3-none-any.whl", hash = "sha256:ebf7622e0b4c5edf084c2c3f2537b756574042784d906934b2ff3cfad3adea9b", size = 29999, upload-time = "2023-07-06T12:09:41.656Z" },
+]
+
+[[package]]
+name = "en-core-web-sm"
+version = "3.8.0"
+source = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl", hash = "sha256:1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85" },
 ]
 
 [[package]]
@@ -3360,8 +3376,10 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "datasets" },
+    { name = "de-core-news-sm" },
     { name = "emoji" },
     { name = "emosent-py" },
+    { name = "en-core-web-sm" },
     { name = "huggingface-hub" },
     { name = "ipykernel" },
     { name = "jupyterlab" },
@@ -3392,8 +3410,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "datasets", specifier = ">=4.8.5" },
+    { name = "de-core-news-sm", url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_sm-3.8.0/de_core_news_sm-3.8.0-py3-none-any.whl" },
     { name = "emoji", specifier = ">=2.15.0" },
     { name = "emosent-py", specifier = ">=0.1.7" },
+    { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "huggingface-hub", specifier = ">=1.14.0" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "jupyterlab" },

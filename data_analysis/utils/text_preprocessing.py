@@ -1,7 +1,8 @@
-from __future__ import annotations
-
 import re
 from typing import Literal
+
+import emoji
+from emosent import get_emoji_sentiment_rank
 
 EmojiStrategy = Literal["keep", "strip", "demojize", "pos_neg_token"]
 EntityStrategy = Literal["keep", "strip_descriptors", "replace_with_token"]
@@ -23,60 +24,51 @@ _EMOJI_RE = re.compile(
 )
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", flags=re.IGNORECASE)
 _HTML_RE = re.compile(r"<[^>]+>")
-_INTENSITY_BANG_RE = re.compile(r"!(?:[!\s]*!)*")
-_INTENSITY_QUEST_RE = re.compile(r"\?(?:[?\s]*\?)*")
-_OTHER_PUNCT_RUN_RE = re.compile(r"([.,;:\-])\1+")
+_BANG_RE = re.compile(r"!(?:[!\s]*!)*")
+_QUEST_RE = re.compile(r"\?(?:[?\s]*\?)*")
+_PUNCT_RUN_RE = re.compile(r"([.,;:\-])\1+")
 _APOSTROPHES_RE = re.compile(r"[‘’ʼʹʻ`´]")
 _WORD_RE = re.compile(r"\b\w+(?:'\w+)*\b")
 _WHITESPACE_RE = re.compile(r"\s+")
 
-_NER_ENTITY_TYPES: frozenset[str] = frozenset({"PRODUCT", "ORG", "PERSON"})
-# POS tags inside ORG/PRODUCT spans considered "descriptor" (stripped under
-# strip_descriptors). PROPN (brand names) and NUM/X/SYM (model codes) survive.
-_DESCRIPTOR_POS: frozenset[str] = frozenset({"ADJ", "NOUN", "ADV"})
+# spaCy entity labels we act on, and the POS tags considered "descriptors"
+# (adjectives/nouns/adverbs) inside an ORG/PRODUCT span.
+_ENTITY_TYPES = {"PRODUCT", "ORG", "PERSON"}
+_DESCRIPTOR_POS = {"ADJ", "NOUN", "ADV"}
+_ENTITY_TOKEN = {"ORG": "<BRAND>", "PRODUCT": "<PRODUCT>", "PERSON": "<PERSON>"}
 
-_EMOJI_POS_THRESHOLD = 0.30
-_EMOJI_NEG_THRESHOLD = -0.30
+# Emoji sentiment thresholds for the pos_neg_token strategy.
+_POS_THRESHOLD = 0.30
+_NEG_THRESHOLD = -0.30
 _EMOJI_TOKENS = {"pos": "<POS_EMOJI>", "neg": "<NEG_EMOJI>", "neu": "<NEU_EMOJI>"}
 
-_ENT_REPLACEMENT_TOKEN: dict[str, str] = {
-    "ORG":     "<BRAND>",
-    "PRODUCT": "<PRODUCT>",
-    "PERSON":  "<PERSON>",
-}
 
-
-def _replace_emojis_with_sentiment_tokens(text: str) -> str:
-    from emosent import get_emoji_sentiment_rank
-
-    def _classify(match: re.Match) -> str:
-        out = []
+def _emoji_to_sentiment_tokens(text: str) -> str:
+    """Replace each emoji with <POS_EMOJI>/<NEG_EMOJI>/<NEU_EMOJI> based on its
+    emosent sentiment score."""
+    def classify(match: re.Match) -> str:
+        tokens = []
         for ch in match.group():
-            try:
-                rank = get_emoji_sentiment_rank(ch)
-            except (KeyError, ValueError):
-                rank = None
+            rank = get_emoji_sentiment_rank(ch)
             score = float(rank["sentiment_score"]) if rank else 0.0
-            if score >= _EMOJI_POS_THRESHOLD:
-                out.append(_EMOJI_TOKENS["pos"])
-            elif score <= _EMOJI_NEG_THRESHOLD:
-                out.append(_EMOJI_TOKENS["neg"])
+            if score >= _POS_THRESHOLD:
+                tokens.append(_EMOJI_TOKENS["pos"])
+            elif score <= _NEG_THRESHOLD:
+                tokens.append(_EMOJI_TOKENS["neg"])
             else:
-                out.append(_EMOJI_TOKENS["neu"])
-        return " " + " ".join(out) + " "
+                tokens.append(_EMOJI_TOKENS["neu"])
+        return " " + " ".join(tokens) + " "
 
-    return _EMOJI_RE.sub(_classify, text)
+    return _EMOJI_RE.sub(classify, text)
 
 
 class TextPreprocessor:
-    """Configurable text preprocessor for review classification.
+    """Configurable text cleaner for the review corpus.
 
-    Two output modes:
-
-    - ``final_tokenize=True`` returns a stream of lowercase word tokens joined
-      by spaces. Use for fasttext language detection (no punct, no emoji).
-    - ``final_tokenize=False`` keeps casing, punctuation, and any special
-      tokens (``<POS_EMOJI>``, ``<BRAND>``, …) intact. Use for BERT input.
+    With final_tokenize=True the output is a stream of lowercase word tokens
+    (good for bag-of-words / language detection). With final_tokenize=False the
+    casing, punctuation and any special tokens (<POS_EMOJI>, <BRAND>, ...) are
+    kept, which is what we feed to the transformer models.
     """
 
     def __init__(
@@ -100,59 +92,67 @@ class TextPreprocessor:
         self.final_tokenize = final_tokenize
 
     def normalize_punctuation(self, text: str) -> str:
+        """Cap runs of repeated punctuation at punct_max_repeat (e.g. '!!!!!' -> '!!!')."""
         if self.punct_max_repeat is None:
             return text
         n = self.punct_max_repeat
-        text = _INTENSITY_BANG_RE.sub(lambda m: "!" * min(n, m.group().count("!")), text)
-        text = _INTENSITY_QUEST_RE.sub(lambda m: "?" * min(n, m.group().count("?")), text)
-        return _OTHER_PUNCT_RUN_RE.sub(r"\1", text)
+        text = _BANG_RE.sub(lambda m: "!" * min(n, m.group().count("!")), text)
+        text = _QUEST_RE.sub(lambda m: "?" * min(n, m.group().count("?")), text)
+        return _PUNCT_RUN_RE.sub(r"\1", text)
 
     def handle_emojis(self, text: str, lang: str = "en") -> str:
-        strat = self.emoji_strategy
-        if strat == "keep":
+        if self.emoji_strategy == "keep":
             return text
-        if strat == "strip":
+        if self.emoji_strategy == "strip":
             return _EMOJI_RE.sub("", text)
-        if strat == "demojize":
-            import emoji
+        if self.emoji_strategy == "demojize":
             return emoji.demojize(text, language=lang.lower(), delimiters=(" ", " "))
-        if strat == "pos_neg_token":
-            return _replace_emojis_with_sentiment_tokens(text)
-        raise ValueError(f"Unknown emoji_strategy: {strat!r}")
+        if self.emoji_strategy == "pos_neg_token":
+            return _emoji_to_sentiment_tokens(text)
+        raise ValueError(f"Unknown emoji_strategy: {self.emoji_strategy!r}")
+
+    def normalize_for_lexical_matching(self, text: str) -> str:
+        """Lowercase, unify apostrophe variants and collapse whitespace so that
+        word lists (e.g. negation words) match regardless of the apostrophe or
+        spacing used in the review. Meant to be used with \\b...\\b regexes."""
+        if not isinstance(text, str):
+            return ""
+        text = _APOSTROPHES_RE.sub("'", text.lower())
+        return _WHITESPACE_RE.sub(" ", text).strip()
 
     def _fill(self, chars: list[str], start: int, end: int, fill: str | None = None) -> None:
         chars[start:end] = list(fill) if fill is not None else [" "] * (end - start)
 
     def _apply_ner(self, text: str, nlp) -> tuple[str, list[dict]]:
+        """Strip or replace named entities. ORG/PRODUCT descriptors are removed
+        (brand names and model codes survive); PERSON names are only removed when
+        close to a brand/product mention."""
         doc = nlp(text)
         chars = list(text)
         removed: list[dict] = []
 
-        brand_token_indices: set[int] = {
+        brand_tokens = {
             tok.i for ent in doc.ents if ent.label_ in {"ORG", "PRODUCT"} for tok in ent
         }
 
-        # Iterate in reverse char order so token-replacements (which can change
-        # the string length) do not invalidate earlier offsets.
+        # Go right-to-left so token replacements don't shift earlier offsets.
         for ent in sorted(doc.ents, key=lambda e: e.start_char, reverse=True):
-            if ent.label_ not in _NER_ENTITY_TYPES:
+            if ent.label_ not in _ENTITY_TYPES:
                 continue
 
             if ent.label_ == "PERSON":
-                if not brand_token_indices:
+                if not brand_tokens:
                     continue
-                min_dist = min(
-                    abs(tok.i - anchor) for tok in ent for anchor in brand_token_indices
-                )
+                min_dist = min(abs(tok.i - anchor) for tok in ent for anchor in brand_tokens)
                 if min_dist > self.person_org_proximity:
                     continue
-                fill = _ENT_REPLACEMENT_TOKEN["PERSON"] if self.entity_strategy == "replace_with_token" else None
+                fill = _ENTITY_TOKEN["PERSON"] if self.entity_strategy == "replace_with_token" else None
                 self._fill(chars, ent.start_char, ent.end_char, fill)
                 removed.append({"text": ent.text, "label": "PERSON", "removed_tokens": [ent.text]})
                 continue
 
             if self.entity_strategy == "replace_with_token":
-                self._fill(chars, ent.start_char, ent.end_char, _ENT_REPLACEMENT_TOKEN[ent.label_])
+                self._fill(chars, ent.start_char, ent.end_char, _ENTITY_TOKEN[ent.label_])
                 removed.append({"text": ent.text, "label": ent.label_, "removed_tokens": [ent.text]})
             else:
                 span_removed = []
@@ -168,9 +168,8 @@ class TextPreprocessor:
     def preprocess(self, text: str, nlp=None, lang: str = "en") -> str:
         return self.preprocess_with_ner_diff(text, nlp=nlp, lang=lang)[0]
 
-    def preprocess_with_ner_diff(
-        self, text: str, nlp=None, lang: str = "en"
-    ) -> tuple[str, list[dict]]:
+    def preprocess_with_ner_diff(self, text: str, nlp=None, lang: str = "en") -> tuple[str, list[dict]]:
+        """Run the full cleaning pipeline. Returns (cleaned_text, removed_entities)."""
         ner_removed: list[dict] = []
         text = text.replace("\n", " ").replace("\r", " ")
         if self.strip_html:

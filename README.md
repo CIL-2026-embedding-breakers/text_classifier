@@ -3,6 +3,12 @@
 Multilingual sentiment classification (5-class, EN+DE) on Amazon-style reviews.
 Team: Embedding_breakers. Score: `1 - MAE / 4`.
 
+This README is split in two parts: **Part 1** explains the repo layout and how to
+get an environment running; **Part 2** has one short section per element of the
+paper (each table / figure) with the exact command(s) to reproduce it. Sections
+in Part 2 follow the order of the paper, and runs inside a section are
+independent, so they can be split between teammates.
+
 ---
 
 # Part 1 — Repository
@@ -19,7 +25,7 @@ text_classifier/
 │   ├── code_configs.py               # dataclasses: Fine_Tuning_Configs, LoRa_Configs, ...
 │   ├── preprocessing/
 │   │   ├── preprocessor.py           # text cleaning, title/review splitting
-│   │   └── preprocessing_sanity_check.ipynb # notebook with preprocessing examples 
+│   │   └── preprocessing_sanity_check.ipynb # notebook with preprocessing examples
 │   ├── training/
 │   │   ├── trainer.py                # CustomTrainer with CE / OLL / EMD / SOFT losses
 │   │   └── training_pipeline.py      # LoRA / full / head fine-tuning pipeline
@@ -27,8 +33,8 @@ text_classifier/
 │       └── validation_analysis.py    # per-label MAE + big-mistakes CSV
 │
 ├── baselines/
-│   ├── simplified_baselines.ipynb    # all baseline numbers in the paper (Tables 1, 2, 3)
-│   └── src/                          # TF-IDF + LR/SVC/NB models, preprocessing, lemmatizer + notebook with baselines plots
+│   ├── simplified_baselines.ipynb    # all baseline numbers in the paper (Tables II, III)
+│   └── src/                          # TF-IDF + LR/SVC/NB models, preprocessing, lemmatizer
 │
 ├── data_analysis/
 │   ├── data_visualisation.ipynb
@@ -64,11 +70,12 @@ text_classifier/
 |---|---|
 | Cluster docs | <https://www.isg.inf.ethz.ch/Main/HelpClusterComputingStudentCluster> |
 | Kaggle competition | <https://www.kaggle.com/t/7aafec306ca648acacee5c4fe633c0fb> |
-| W&B project | `cil-project` |
+| W&B project (base-scale runs) | `cil-project` |
+| W&B project (scaling runs) | `cil-project-scaling-laws` |
 | Cluster conda env | `/cluster/courses/cil/envs/envs/text-classification` |
 | Cluster shared data | `/cluster/courses/cil/text-classification/data/` |
 
-## Environment setup
+## Environment setup (uv)
 
 The project uses `uv` for dependency management; `uv.lock` is committed, so
 versions are pinned.
@@ -79,28 +86,28 @@ Install `uv` (one-time, local machine or cluster):
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-From the repo root, create the venv and install all dependencies:
+From the repo root, create the venv and install everything from the lockfile:
 
 ```
 uv sync
 ```
 
-This creates `.venv/`. To run any Python entry point:
+This creates `.venv/`. From then on, prefix any Python command with `uv run`:
 
 ```
 uv run python run_dl.py
 ```
 
-or activate the venv directly:
+or activate the venv once and use plain `python`:
 
 ```
 source .venv/bin/activate
 python run_dl.py
 ```
 
-The SLURM launcher `scripts/launch_run.sh` already wraps the training entry
-point with `uv run`, so once `uv sync` has succeeded on the cluster every
-`sbatch` command below works as-is.
+The SLURM launcher `scripts/launch_run.sh` already wraps the training entry point
+with `uv run`, so once `uv sync` succeeds on the cluster, every `sbatch` command
+below works as-is.
 
 ## Cluster connection
 
@@ -137,7 +144,7 @@ override when launching a run.
 | `CIL_DATA_PATH` | `./data/split/` | dir with `train.csv`, `val.csv`, `test.csv` |
 | `CIL_RUN_TAG` | `multilingual` | string appended to the W&B run name |
 | `CIL_WANDB_GROUP` | unset | optional W&B group |
-| `CIL_BATCH_SIZE` | unset | overrides `per_device_train_batch_size` (use for big LoRA runs) |
+| `CIL_BATCH_SIZE` | unset | overrides `per_device_train_batch_size` (use for big runs) |
 | `CIL_EVAL_BATCH_SIZE` | unset | overrides `per_device_eval_batch_size` |
 | `CIL_GRAD_ACCUM` | unset | overrides `gradient_accumulation_steps` |
 | `CIL_CHECKPOINT_ROOT` | `/work/scratch/$USER/text_classifier_cache/checkpoints` | Trainer checkpoints |
@@ -149,48 +156,89 @@ A run resumes from its checkpoint dir automatically. To start fresh, delete it:
 rm -rf /work/scratch/$USER/text_classifier_cache/checkpoints/<run_name>
 ```
 
-A few knobs are not exposed as env vars and must be edited in code:
-- `input_format` (`review_only` vs `title_plus_review`) → `run_dl.py:41`
-- LoRA `r`, `alpha`, `dropout` → `deep_learning/code_configs.py:LoRa_Configs`
+### Knobs that are not env vars (edit in code)
+
+A couple of settings are intentionally kept as code defaults instead of env vars:
+
+- `input_format` (`review_only` vs `title_plus_review`) → `run_dl.py:46`
+- LoRA `r`, `alpha`, `dropout` → `deep_learning/code_configs.py`, `LoRa_Configs`
+  (defaults `r=16, alpha=32, dropout=0.1`)
+
+The full-finetuning batch sizes are hardcoded in `run_dl.py:76-79`
+(per-device train 8, eval 16, grad accumulation 8).
+
+### What a run writes
+
+Each run writes its metrics to W&B and to a local folder named after the run, at
+`fine_tuning/<run_name>/`:
+
+- `validation_metrics.txt` — overall score / accuracy / per-label MAE
+- `validation_results.csv` — per-example predictions on the val set
+- `big_mistakes.csv` — examples off by ≥ 2 classes
+- `submission.csv` — predictions on the Kaggle test set
+
+So for most tables you can just read `eval/score` on W&B, or `cat` the
+`validation_metrics.txt` of each run.
 
 ---
 
 # Part 2 — Reproducing the paper
 
-Each block corresponds to a table in the paper. Runs inside a block are
-independent and can be assigned to different teammates.
+> **Conventions used below.** Every transformer run uses `light` preprocessing
+> (`CIL_PREPROC=light`) — the preprocessing ablation (Table V) is the only place
+> this varies, and it shows the level barely matters (< 0.001 score). LoRA uses
+> `r=16, alpha=32` (the code default). Where a run needs a non-default
+> `input_format`, it is called out explicitly.
 
 ## Data preparation (run once, before any training)
 
-```
-python scripts/split_train_val.py
-python scripts/run_language_detection.py
-```
-
-This produces `data/split/{train,val,test}.csv` (seed=42, 90/10) and
-`data/lang/{EN,DE,UNCERTAIN}/{train,val,test}.csv` (lingua-py, threshold 0.63).
-
-## Baselines — Tables 1, 2, 3
-
-All baseline numbers (BoW/TF-IDF + logistic regression, naive Bayes, SVC,
-XGBoost, random forest, GloVe, fastText; feature-extraction comparison;
-per-language comparison) come from one notebook:
+This builds the train/val split and the per-language buckets used everywhere
+below.
 
 ```
-jupyter nbconvert --execute --to notebook baselines/simplified_baselines.ipynb
+uv run python scripts/split_train_val.py        # 90/10 split, seed=42
+uv run python scripts/run_language_detection.py  # lingua-py EN / DE / UNCERTAIN split
 ```
 
-No SLURM needed.
+This produces:
 
-## Preprocessing ablation — Table 4
+- `data/split/{train,val,test}.csv` — seed 42, 90/10 split
+- `data/lang/{EN,DE,UNCERTAIN}/{train,val,test}.csv` — lingua-py, confidence
+  threshold 0.63
 
-XLM-RoBERTa base + LoRA, learning rate `5e-5`. Nine independent runs.
+## Baselines — Tables II & III
 
-**Caveat:** `input_format` is hardcoded in `run_dl.py:41`. Before launching the
-"Review only" runs, edit that line to `input_format="review_only"`. For all
-other runs, leave it as `input_format="title_plus_review"`.
+All baseline numbers come from a single notebook: BoW / TF-IDF with logistic
+regression, naive Bayes, SVC, XGBoost, random forest, plus GloVe and fastText
+features (Table II), and the n-gram feature-extraction comparison (Table III).
+No SLURM needed — runs on a laptop.
 
-Review-only runs (set `input_format="review_only"` first):
+```
+uv run jupyter nbconvert --execute --to notebook baselines/simplified_baselines.ipynb
+```
+
+## LoRA vs full fine-tuning — Table IV
+
+XLM-RoBERTa-base, multilingual data. Two independent runs. Full fine-tuning needs
+the lower learning rate (`1e-5`); LoRA uses the default `5e-4`.
+
+```
+sbatch --export=ALL,CIL_PREPROC=light,CIL_TRAINING_TYPE=lora,CIL_LR=5e-4,CIL_RUN_TAG=lora_vs_full_lora ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_TRAINING_TYPE=full,CIL_LR=1e-5,CIL_RUN_TAG=lora_vs_full_full ./scripts/launch_run.sh
+```
+
+The full run automatically uses the small batch size hardcoded in `run_dl.py:76-79`.
+
+## Preprocessing ablation — Table V
+
+XLM-RoBERTa-base + LoRA, learning rate `5e-5`. Nine independent runs that vary
+the input representation and the normalization level.
+
+**Before launching:** `input_format` is a code default (`run_dl.py:46`). Set it to
+`"review_only"` for the four review-only runs, and back to `"title_plus_review"`
+for the rest.
+
+Review-only runs (set `input_format="review_only"`):
 
 ```
 sbatch --export=ALL,CIL_LR=5e-5,CIL_PREPROC=none,CIL_RUN_TAG=prep_revonly_none     ./scripts/launch_run.sh
@@ -214,76 +262,132 @@ Title+review plain concat (set `input_format="title_plus_review"`):
 sbatch --export=ALL,CIL_LR=5e-5,CIL_DELIMITER_MODE=plain_concat,CIL_PREPROC=none,CIL_RUN_TAG=prep_concat_none ./scripts/launch_run.sh
 ```
 
-Results: read `eval/score` per run on the W&B project, or open
-`fine_tuning/<run_name>/validation_metrics.txt` written by each job.
+Read `eval/score` per run on W&B, or open each `fine_tuning/<run_name>/validation_metrics.txt`.
 
-## Per-language specialisation — Table 5
+## Per-language specialisation — Table VI
 
-XLM-RoBERTa base + LoRA, LR `5e-4`, 5 epochs, CE loss. Five independent runs.
+XLM-RoBERTa-base + LoRA, LR `5e-4`, 5 epochs, CE loss, `light` preprocessing.
+Five independent runs: the multilingual baseline, two language-filtered XLM-R
+controls (EN-only, DE-only), and two monolingual specialists (DeBERTa-v3-base for
+English, gBERT-base for German).
+
+**Before launching:** these runs use review-only inputs. Set
+`input_format="review_only"` in `run_dl.py:46`.
 
 ```
-sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/split/,CIL_RUN_TAG=multilingual        ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/lang/EN/,CIL_RUN_TAG=xlmr_en           ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/lang/DE/,CIL_RUN_TAG=xlmr_de           ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_MODEL_NAME=microsoft/deberta-v3-base,CIL_DATA_PATH=./data/lang/EN/,CIL_RUN_TAG=deberta_en ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_MODEL_NAME=deepset/gbert-base,CIL_DATA_PATH=./data/lang/DE/,CIL_RUN_TAG=gbert_de          ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/split/,CIL_RUN_TAG=multilingual          ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/lang/EN/,CIL_RUN_TAG=xlmr_en             ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=xlm-roberta-base,CIL_DATA_PATH=./data/lang/DE/,CIL_RUN_TAG=xlmr_de             ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=microsoft/deberta-v3-base,CIL_DATA_PATH=./data/lang/EN/,CIL_RUN_TAG=deberta_en ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=deepset/gbert-base,CIL_DATA_PATH=./data/lang/DE/,CIL_RUN_TAG=gbert_de          ./scripts/launch_run.sh
 ```
 
-All five at once (puts them in one W&B group):
+All five at once (puts them in one W&B group; the script already sets
+`CIL_PREPROC=light`, but you still need the `input_format="review_only"` edit):
 
 ```
 bash scripts/launch_ablation.sh
 ```
 
-Collect:
+Collect the aggregated per-bucket / routed-pair numbers from the local
+`validation_results.csv` files:
 
 ```
-python scripts/per_language_ablation.py
+uv run python scripts/per_language_ablation.py
 ```
 
-## Loss-function ablation — Table 6
+## Loss-function ablation — Table VII
 
-XLM-RoBERTa base + LoRA, multilingual data. Four independent runs.
+XLM-RoBERTa-base + LoRA, multilingual data, `light` preprocessing,
+`title_plus_review` inputs (the code default). Only the training-time loss
+changes. Four independent runs.
 
 ```
-sbatch --export=ALL,CIL_LOSS_TYPE=ce,CIL_RUN_TAG=loss_ce     ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_LOSS_TYPE=oll,CIL_RUN_TAG=loss_oll   ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_LOSS_TYPE=emd,CIL_RUN_TAG=loss_emd   ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_LOSS_TYPE=soft,CIL_RUN_TAG=loss_soft ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_LOSS_TYPE=ce,CIL_RUN_TAG=loss_ce     ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_LOSS_TYPE=oll,CIL_RUN_TAG=loss_oll   ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_LOSS_TYPE=emd,CIL_RUN_TAG=loss_emd   ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_PREPROC=light,CIL_LOSS_TYPE=soft,CIL_RUN_TAG=loss_soft ./scripts/launch_run.sh
 ```
 
 Collect from W&B (one tag at a time gives a per-loss table):
 
 ```
-python scripts/loss_results_from_wandb.py loss_ce
-python scripts/loss_results_from_wandb.py loss_oll
-python scripts/loss_results_from_wandb.py loss_emd
-python scripts/loss_results_from_wandb.py loss_soft
+uv run python scripts/loss_results_from_wandb.py loss_ce
+uv run python scripts/loss_results_from_wandb.py loss_oll
+uv run python scripts/loss_results_from_wandb.py loss_emd
+uv run python scripts/loss_results_from_wandb.py loss_soft
 ```
 
-## LoRA vs full fine-tuning — Table 7
+(OLL uses `alpha=1.5` and SOFT uses `sigma=4`, set in the trainer.)
 
-XLM-RoBERTa base, multilingual data. Two independent runs.
+## Scaling XLM-RoBERTa — Table VIII & Figure 2
 
-```
-sbatch --export=ALL,CIL_TRAINING_TYPE=lora,CIL_RUN_TAG=lora_vs_full_lora ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_TRAINING_TYPE=full,CIL_RUN_TAG=lora_vs_full_full ./scripts/launch_run.sh
-```
-
-The full run uses the batch-size override hardcoded in `run_dl.py:71-74`
-(per-device batch 8, grad accumulation 8).
-
-## XLM-RoBERTa scaling — Table 8 / Figure (scaling)
-
-LoRA fine-tuning across the XLM-R family, multilingual data. Three independent
-runs. The XL model needs a larger GPU; submit it on a high-memory partition.
+LoRA fine-tuning across the XLM-R family (base / large / XL), multilingual data,
+`title_plus_review` inputs with delimiters, LoRA `r=16, alpha=32`. The learning
+rate is decreased as the model grows. Three independent runs.
 
 ```
-sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-base,CIL_RUN_TAG=scale_base       ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_MODEL_NAME=xlm-roberta-large,CIL_RUN_TAG=scale_large     ./scripts/launch_run.sh
-sbatch --export=ALL,CIL_MODEL_NAME=facebook/xlm-roberta-xl,CIL_RUN_TAG=scale_xl  ./scripts/launch_run.sh
+# base — lr 5e-4, 6 epochs
+sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=xlm-roberta-base,CIL_LR=5e-4,CIL_EPOCHS=6,CIL_DELIMITER_MODE=with_tags,CIL_RUN_TAG=scale_base   ./scripts/launch_run.sh
+# large — lr 3e-4, 6 epochs
+sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=xlm-roberta-large,CIL_LR=3e-4,CIL_EPOCHS=6,CIL_DELIMITER_MODE=with_tags,CIL_RUN_TAG=scale_large ./scripts/launch_run.sh
+# XL — lr 2e-4, 4 epochs (3.49B params: needs a big GPU + small batch + grad accum)
+sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=facebook/xlm-roberta-xl,CIL_LR=2e-4,CIL_EPOCHS=4,CIL_DELIMITER_MODE=with_tags,CIL_BATCH_SIZE=8,CIL_GRAD_ACCUM=8,CIL_RUN_TAG=scale_xl ./scripts/launch_run.sh
 ```
 
+The XL run for the paper (`XLM-R XL`, score `0.9114`) is logged here:
+**`acormoreche-eth-zurich/cil-project-scaling-laws/cb53ku9a`**
+(<https://wandb.ai/acormoreche-eth-zurich/cil-project-scaling-laws/runs/cb53ku9a>).
+The base and large scaling runs live in the same `cil-project-scaling-laws`
+project (they were originally launched from the `scaling_law` branch, which is
+identical except that it logged to that project name).
+
+**Figure 2** (training-loss and eval-MAE curves) is plotted directly from the
+`train/loss` and `eval/mae` curves of these three runs, exported from
+`cil-project-scaling-laws`. There is no separate plotting script in the repo.
+
+## Do base-scale choices transfer to XL? — Table IX
+
+This checks whether the two base-scale wins (OLL loss, monolingual backbones)
+still help at XL scale. Same LoRA protocol as the scaling section above. The
+reported numbers come from these W&B runs:
+
+| Row (Table IX) | Model | W&B run |
+|---|---|---|
+| Loss: XLM-R XL + CE | `facebook/xlm-roberta-xl` | `acormoreche-eth-zurich/cil-project-scaling-laws/cb53ku9a` |
+| Loss: XLM-R XL + OLL | `facebook/xlm-roberta-xl` | local `fine_tuning/xlm-roberta-xl_lora_light_title_plus_review_xlmr_lora_oll_lr2.00e-04_ep4` |
+| Backbone (routed EN) | `microsoft/deberta-v2-xlarge` (~0.9B) | `acormoreche-eth-zurich/cil-project/1pz0yubk` |
+| Backbone (routed DE) | `ikim-uk-essen/geberta-xlarge` (~0.9B) | `acormoreche-eth-zurich/cil-project/2f4pkuql` |
+
+Direct links:
+- DeBERTa-v2-XL (EN): <https://wandb.ai/acormoreche-eth-zurich/cil-project/runs/1pz0yubk>
+- geBERTa-XL (DE): <https://wandb.ai/acormoreche-eth-zurich/cil-project/runs/2f4pkuql>
+- XLM-R XL: <https://wandb.ai/acormoreche-eth-zurich/cil-project-scaling-laws/runs/cb53ku9a>
+
+**Loss at XL (CE vs OLL).** The CE run is the scaling XL run above. For the OLL
+run, swap the loss (the XL CE run already gives the CE row):
+
+```
+sbatch --export=ALL,CIL_MODEL_NAME=facebook/xlm-roberta-xl,CIL_LOSS_TYPE=oll,CIL_LR=2e-4,CIL_EPOCHS=4,CIL_PREPROC=light,CIL_BATCH_SIZE=8,CIL_GRAD_ACCUM=8,CIL_RUN_TAG=xlmr_lora_oll ./scripts/launch_run.sh
+```
+
+**Backbone at XL (routed monolingual pair).** Fine-tune the two ~0.9B monolingual
+specialists on the EN / DE buckets, then route by language. Both are DeBERTa-v2
+architecture, so the LoRA target modules are picked automatically (the pipeline
+keys on `deberta-v`/`geberta` in the model name).
+
+```
+sbatch --export=ALL,CIL_MODEL_NAME=microsoft/deberta-v2-xlarge,CIL_DATA_PATH=./data/lang/EN/,CIL_PREPROC=light,CIL_LR=2e-4,CIL_EPOCHS=4,CIL_BATCH_SIZE=4,CIL_GRAD_ACCUM=16,CIL_RUN_TAG=deberta_xl_en ./scripts/launch_run.sh
+sbatch --export=ALL,CIL_MODEL_NAME=ikim-uk-essen/geberta-xlarge,CIL_DATA_PATH=./data/lang/DE/,CIL_PREPROC=light,CIL_LR=2e-4,CIL_EPOCHS=4,CIL_BATCH_SIZE=4,CIL_GRAD_ACCUM=16,CIL_RUN_TAG=geberta_xl_de ./scripts/launch_run.sh
+```
+
+The batch / grad-accum values above are starting points for fitting the big
+models on a single GPU; the exact per-run hyperparameters used for the paper are
+logged in the linked W&B runs. The routed-pair score is obtained by concatenating
+the EN and DE validation predictions (same idea as
+`scripts/per_language_ablation.py`).
+
+---
 
 # AI use
 
@@ -296,11 +400,11 @@ Asked Claude code to implement the baselines I had thought about, gave Claude th
 “In order to have a well constructed project I think we should compute robust baselines with basic methods in order to get intuitions about what are the things a more complex model would help on.
 	Among the things to look at:
 * What are the limitations of the BOW approach. Why does it fail.
-* Look at how informative/noisy the title and text samples are 
-* See if it helps to have a specialized model per language 
+* Look at how informative/noisy the title and text samples are 
+* See if it helps to have a specialized model per language 
 * See if classification is the way to go or we should implement a loss that accounts for the regression aspect of the loss
 * See how some basic preprocessing (lowercasing, removing spelling mistakes, …) can help on our task.
-* See the performance assess the performance of bigger models in a  non-finetuned setting in order to assess the potential improvement when moving to deeper models 
+* See the performance assess the performance of bigger models in a  non-finetuned setting in order to assess the potential improvement when moving to deeper models 
 For all these tasks I think we should compute the resulting metrics as well as perform a quick data analysis of the results in order to understand why an approach can help/hinder our task.
 
 Here is how I see this part:
@@ -311,7 +415,7 @@ Look at the failure modes and guess if DL would help
 For the rest of the baselines, use the best performing objective
 
 2. Figure the impact of the n gram by looking at the evolution of performance when we increase n.
-3. Look at ensemble of  language specific BOW model vs one multilanguage BOW model (simple parameter sweep but the result should be pretty clear)
+3. Look at ensemble of  language specific BOW model vs one multilanguage BOW model (simple parameter sweep but the result should be pretty clear)
 			For the future use the best performing approach
 
 3. See the impact of preprocessing. Set up a preprocessing pipeline (many of them online) and see the impact on performance. It would be good to analyse the results and compare them.
