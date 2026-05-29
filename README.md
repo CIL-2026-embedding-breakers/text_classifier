@@ -20,6 +20,7 @@ text_classifier/
 ├── run_dl.py                         # main entry point (env-var driven)
 ├── sweeps.py                         # legacy W&B sweep entry (kept, not used for final results)
 ├── pyproject.toml                    # uv project
+├── uv.lock                           # pinned deps: cluster conda env + our extra libraries (support Local / Cluster)
 │
 ├── deep_learning/
 │   ├── code_configs.py               # dataclasses: Fine_Tuning_Configs, LoRa_Configs, ...
