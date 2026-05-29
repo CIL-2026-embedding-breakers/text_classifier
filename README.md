@@ -289,6 +289,8 @@ sbatch --export=ALL,CIL_MODEL_NAME=facebook/xlm-roberta-xl,CIL_RUN_TAG=scale_xl 
 
 
 ## Baselines:
+Tool used: [Claude code]
+Files affected: [all the baseline folder]
 Asked Claude code to implement the baselines I had thought about, gave Claude the following 
 “In order to have a well constructed project I think we should compute robust baselines with basic methods in order to get intuitions about what are the things a more complex model would help on.
 	Among the things to look at:
@@ -315,10 +317,14 @@ For the rest of the baselines, use the best performing objective
 
 1. See the difference between title only and title + text.
 “
-I later added Glove and fasttext and asked Claude for an implementation of a vectorizer
+I later added Glove and fasttext and asked Claude for an implementation of a vectorizer, all code in the baseline folder has been checked and understood
 
 ## Wandb:
+Tool used: [Claude code]
+Files affected: [scripts/launch_sweeps.sh sweeps.py]
 Asked Claude code to help with the implementation of wandb sweeps 
 
 ## Trainer:
+Tool used: [Claude Sonnet 4.6]
+Files affected: []
 Asked Claude what combination of hyper parameters made sense for LoRa and different sizes of XLM-Roberta (conducted the experiment myself, just asked for initial values that made sense)
