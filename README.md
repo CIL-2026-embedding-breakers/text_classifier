@@ -335,34 +335,26 @@ sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=xlm-roberta-large,CIL_LR=3e
 sbatch --export=ALL,CIL_PREPROC=light,CIL_MODEL_NAME=facebook/xlm-roberta-xl,CIL_LR=2e-4,CIL_EPOCHS=4,CIL_DELIMITER_MODE=with_tags,CIL_BATCH_SIZE=8,CIL_GRAD_ACCUM=8,CIL_RUN_TAG=scale_xl ./scripts/launch_run.sh
 ```
 
-The XL run for the paper (`XLM-R XL`, score `0.9114`) is logged here:
-**`acormoreche-eth-zurich/cil-project-scaling-laws/cb53ku9a`**
-(<https://wandb.ai/acormoreche-eth-zurich/cil-project-scaling-laws/runs/cb53ku9a>).
-The base and large scaling runs live in the same `cil-project-scaling-laws`
-project (they were originally launched from the `scaling_law` branch, which is
-identical except that it logged to that project name).
+These scaling runs were originally launched from the `scaling_law` branch, which
+is identical to `main` except that it logs to a separate W&B project; on `main`
+they log to `cil-project`.
 
 **Figure 2** (training-loss and eval-MAE curves) is plotted directly from the
-`train/loss` and `eval/mae` curves of these three runs, exported from
-`cil-project-scaling-laws`. There is no separate plotting script in the repo.
+`train/loss` and `eval/mae` curves of these three runs as logged to W&B. There is
+no separate plotting script in the repo.
 
 ## Do base-scale choices transfer to XL? — Table IX
 
 This checks whether the two base-scale wins (OLL loss, monolingual backbones)
 still help at XL scale. Same LoRA protocol as the scaling section above. The
-reported numbers come from these W&B runs:
+models compared:
 
-| Row (Table IX) | Model | W&B run |
-|---|---|---|
-| Loss: XLM-R XL + CE | `facebook/xlm-roberta-xl` | `acormoreche-eth-zurich/cil-project-scaling-laws/cb53ku9a` |
-| Loss: XLM-R XL + OLL | `facebook/xlm-roberta-xl` | local `fine_tuning/xlm-roberta-xl_lora_light_title_plus_review_xlmr_lora_oll_lr2.00e-04_ep4` |
-| Backbone (routed EN) | `microsoft/deberta-v2-xlarge` (~0.9B) | `acormoreche-eth-zurich/cil-project/1pz0yubk` |
-| Backbone (routed DE) | `ikim-uk-essen/geberta-xlarge` (~0.9B) | `acormoreche-eth-zurich/cil-project/2f4pkuql` |
-
-Direct links:
-- DeBERTa-v2-XL (EN): <https://wandb.ai/acormoreche-eth-zurich/cil-project/runs/1pz0yubk>
-- geBERTa-XL (DE): <https://wandb.ai/acormoreche-eth-zurich/cil-project/runs/2f4pkuql>
-- XLM-R XL: <https://wandb.ai/acormoreche-eth-zurich/cil-project-scaling-laws/runs/cb53ku9a>
+| Row (Table IX) | Model |
+|---|---|
+| Loss: XLM-R XL + CE | `facebook/xlm-roberta-xl` |
+| Loss: XLM-R XL + OLL | `facebook/xlm-roberta-xl` |
+| Backbone (routed EN) | `microsoft/deberta-v2-xlarge` (~0.9B) |
+| Backbone (routed DE) | `ikim-uk-essen/geberta-xlarge` (~0.9B) |
 
 **Loss at XL (CE vs OLL).** The CE run is the scaling XL run above. For the OLL
 run, swap the loss (the XL CE run already gives the CE row):
@@ -382,10 +374,8 @@ sbatch --export=ALL,CIL_MODEL_NAME=ikim-uk-essen/geberta-xlarge,CIL_DATA_PATH=./
 ```
 
 The batch / grad-accum values above are starting points for fitting the big
-models on a single GPU; the exact per-run hyperparameters used for the paper are
-logged in the linked W&B runs. The routed-pair score is obtained by concatenating
-the EN and DE validation predictions (same idea as
-`scripts/per_language_ablation.py`).
+models on a single GPU. The routed-pair score is obtained by concatenating the EN
+and DE validation predictions (same idea as `scripts/per_language_ablation.py`).
 
 ---
 
